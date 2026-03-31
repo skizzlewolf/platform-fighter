@@ -8,7 +8,7 @@
 // ============================================================
 
 enum class StageID {
-	Training,
+	Dojo,
 	Kohona
 };
 
@@ -16,6 +16,12 @@ enum class GameState {
 	StageSelect,
 	Playing
 };
+
+enum class GameMode {
+	Versus,
+	Training
+};
+
 
 // ============================================================
 //  STAGE + PLATFORMS
@@ -83,7 +89,12 @@ struct MoveData {
 	sf::Vector2f hitboxSize{ 0.f, 0.f };
 	sf::Vector2f hitboxOffset{ 0.f, 0.f }; // relative to player's top left
 	sf::Vector2f knockback{ 0.f, 0.f };
+	float knockbackScaling = 0.f;
+	float damage = 0.f;
 	float hitstun = 0.f;
+
+	bool causesKnockdown = false;
+	float knockdownTime = 0.f;
 
 	float cancelStart = 0.f; // seconds after startup when cancel becomes allowed
 	float cancelEnd = 0.f;   // seconds after startup when cancel stops

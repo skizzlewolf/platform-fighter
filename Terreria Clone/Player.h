@@ -25,6 +25,16 @@ struct Player {
 	float runSpeed = 520.f;
 	float gravity = 2000.f;
 	float jumpForce = -700.f;
+	bool fastFalling = false;
+	float fastFallSpeedBonus = 1400.f;
+	bool downWasDown = false;
+	/*float airAccel = 1800.f;
+	float airDecel = 1400.f;
+	float airMaxSpeed = 260.f;*/ //not using these yet
+
+	float landingLagTimer = 0.f;
+	float landingLagLight = 0.06f;
+	float landingLagHeavy = 0.12f;
 
 	//Jump system(double jumps + multple jumps later)
 	int maxJumps = 2; //ground jump + midair jump
@@ -53,7 +63,6 @@ struct Player {
 	// Platforming state
 	// ----------------------------
 	bool onGround = false;
-
 	bool dropping = false;
 	float dropTimer = 0.f;
 	float dropDuration = 0.2f;
@@ -98,6 +107,15 @@ struct Player {
 	float lightBufferTimer = 0.f;
 	float inputBufferWindow = 0.18f; // tweak later*********
 
+	//Damage Percent Tracking
+	float damagePercent = 0.0f;
+	float maxDamagePercent = 999.0f;
+
+	//Combat tracking | hitstun scaling
+	int comboCount = 0;
+	float comboTimer = 0.f;
+	float comboResetTime = 0.85f; //if you don't connect within this time, combo drops
+
 	//---------------------------
 	//Defense: Block & Dodge
 	//---------------------------
@@ -111,7 +129,18 @@ struct Player {
 	float dodgeInvulnDuration = 0.09f;
 	float dodgeSpeed = 980.f;
 	float dodgeCooldownTimer = 0.f;
-	float dodgeCooldown = 0.65f; // time before you can dodge again
+	float dodgeCooldown = 2.15f; // time before you can dodge again
+	float blockstunTimer = 0.f;
+
+	// Shield
+	float shield = 100.f;
+	float maxShield = 100.f;
+	float shieldRegenDelayTimer = 0.f;
+	float shieldRegenDelay = 1.25f;
+	float shieldRegenRate = 22.f; //per second
+	bool shieldBroken = false;
+	float shieldBreakTimer = 0.f;
+	float shieldBreakDuration = 1.25f;
 
 	// Move data
 	MoveData lightChain[3];
@@ -137,7 +166,9 @@ struct Player {
 			.startup = 0.04f, .active = 0.06f, .recovery = 0.16f,
 			.hitboxSize = {55.f, 22.f},
 			.hitboxOffset = {width, height * 0.35f},
-			.knockback = {90.f, -20.f},
+			.knockback = {35.f, -8.f},
+			.knockbackScaling = 0.08f,
+			.damage = 2.5f,
 			.hitstun = 0.28f,
 
 			.cancelStart = 0.04f + 0.06f,
@@ -153,7 +184,9 @@ struct Player {
 			.startup = 0.05f, .active = 0.06f, .recovery = 0.16f,
 			.hitboxSize = {60.f, 22.f},
 			.hitboxOffset = {width, height * 0.33f},
-			.knockback = {110.f, -25.f},
+			.knockback = {45.f, -10.f},
+			.knockbackScaling = 0.10f,
+			.damage = 3.0f,
 			.hitstun = 0.30f,
 
 			.cancelStart = 0.05f + 0.06f, // start of recovery
@@ -165,8 +198,10 @@ struct Player {
 		lightChain[2] = MoveData{
 			.startup = 0.06f, .active = 0.07f, .recovery = 0.14f,
 			.hitboxSize = {65.f, 24.f},
-			.hitboxOffset = {width, height * 0.30f},
-			.knockback = {140.f, -35.f},
+			.hitboxOffset = {width + 8.f, height * 0.30f},
+			.knockback = {170.f, -45.f},
+			.knockbackScaling = 0.55f,
+			.damage = 4.5f,
 			.hitstun = 0.33f,
 
 			.cancelStart = 0.06f + 0.07f,
@@ -179,27 +214,29 @@ struct Player {
 			.startup = 0.10f, .active = 0.08f, .recovery = 0.22f,
 			.hitboxSize = {70.f, 28.f},
 			.hitboxOffset = {width, height * 0.25f},
-			.knockback = {420.f, -220.f},
+			.knockback = {260.f, -120.f},
+			.knockbackScaling = 0.95f,
+			.damage = 7.0f,
 			.hitstun = 0.35f,
-
-			.lungeSpeed = 260.f,
-			.lungeDuration = 0.08f
 		};
 
-		//Run Light: slide knockdown starter (no run heavy exists)
+		//Run Light (n=mobile grounded approach attack && doesn't universally apply knockdown)
 		runLightMove = MoveData{
 			.startup = 0.06f, .active = 0.08f, .recovery = 0.22f,
 			.hitboxSize = {75.f,20.f},
 			.hitboxOffset{width, height * 0.72f}, //low hitbox for slide
-			.knockback = {260.f, -10.f}, //mostly horizontal
+			.knockback = {95.f, -8.f}, //mostly horizontal
+			.knockbackScaling = 0.20f,
+			.damage = 4.0f,
 			.hitstun = 0.30f,
+			.causesKnockdown = false,
 
 			.cancelStart = 0.f,
 			.cancelEnd = 0.f,
 			.cancelOnHitOnly = true,
 
-			.slideSpeed = 620.f,
-			.slideDuration = 0.18f
+			.slideSpeed = 220.f,
+			.slideDuration = 0.07f
 		};
 	}
 
@@ -242,6 +279,16 @@ struct Player {
 		float elapsed = total - attack.timer;
 
 		return elapsed >= m->startup && elapsed < (m->startup + m->active);
+	}
+
+	void resetCombo() {
+		comboCount = 0;
+		comboTimer = 0.f;
+	}
+
+	void registerComboHit() {
+		comboCount++;
+		comboTimer = comboResetTime;
 	}
 
 	//***************CURRENTLY NOT IN USE*******************
@@ -298,12 +345,12 @@ struct Player {
 
 	bool movementLocked() const {
 		//no movement control when stunned or attacking
-		return inHitstun() || inKnockdown() || knockdownLockTimer > 0.f || isAttacking();
+		return inHitstun() || inKnockdown() || knockdownLockTimer > 0.f || isAttacking() || blockstunTimer > 0.f || landingLagTimer > 0.f;
 	}
 
 	bool actionsLocked() const {
 		//no starting attacks while stunned, dodging, or blocking
-		return inHitstun() || inKnockdown() || knockdownLockTimer > 0.f || isDodging || isBlocking;
+		return inHitstun() || inKnockdown() || knockdownLockTimer > 0.f || isDodging || isBlocking || blockstunTimer > 0.f || landingLagTimer > 0.f;
 	}
 
 	bool canSpendBufferedInputs() const {
@@ -394,6 +441,37 @@ struct Player {
 		};
 	}
 
+	//----------------------------
+	// Damage Percentages
+	//----------------------------
+	void addDamage(float amount) {
+		if (amount <= 0.f) { return; }
+		damagePercent += amount;
+		if (damagePercent > maxDamagePercent) {
+			damagePercent = maxDamagePercent;
+		}
+	}
+
+	void resetDamage() {
+		damagePercent = 0.0f;
+	}
+
+	float getDamage() const {
+		return damagePercent;
+	}
+	//---------------------------
+	// Shield Helper
+	//---------------------------
+	bool canBlock() const {
+		return !shieldBroken && shield > 0.f;
+	}
+	void resetShield() {
+		shield = maxShield;
+		shieldBroken = false;
+		shieldBreakTimer = 0.f;
+		shieldRegenDelayTimer = 0.f;
+	}
+
 	// ----------------------------
 	// Respawn / life cycle
 	// ----------------------------
@@ -428,6 +506,26 @@ struct Player {
 		dropping = false;
 		dropTimer = 0.f;
 
+		// resets combo state
+		stopRun();
+		stopDodge();
+		isBlocking = false;
+		blockstunTimer = 0.f;
+
+		attack.current = AttackID::None;
+		attack.timer = 0.f;
+		attack.hasHit = false;
+
+		lightBufferTimer = 0.f;
+		heavyBufferTimer = 0.f;
+		hitstopTimer = 0.f;
+
+		//resets 
+		resetDamage();
+		resetCombo();
+		resetShield();
+
+
 		// start invulnerability
 		spawnInvulnTimer = spawnInvulnDuration;
 	}
@@ -442,24 +540,63 @@ struct Player {
 	// Combat
 	sf::FloatRect hurtbox() const { return body.getGlobalBounds(); }
 
-	void takeHit(const sf::Vector2f& knockback, float hitstunSeconds, bool knockdown = false, float knockdownSeconds = 0.f) {
+	void takeHit(const sf::Vector2f& baseKnockback, float hitstunSeconds, float damage, float knockbackScaling = 1.0f, bool knockdown = false, float knockdownSeconds = 0.f) {
 		if (!canBeHit()) return;
 
-		if (isBlocking) {
-			sf::Vector2f reducedKB{ knockback.x * 0.25f, knockback.y * 0.15f };
-			float reducedStun = hitstunSeconds * 0.40f;
+		//Percent based knockback scaling before damage is added
+		float percentScale = 1.0f + (damagePercent / 100.0f) * knockbackScaling;
+		percentScale *= (1.0f + damagePercent / 300.f);
+		sf::Vector2f scaledKnockback = {
+			baseKnockback.x * percentScale,
+			baseKnockback.y * percentScale
+		};
 
-			// Block prevents knockdown
+		//hitstun scaling
+		float comboDecay = 1.0f - (comboCount * 0.08f);
+		if (comboDecay < 0.72f) { comboDecay = 0.72f; }
+
+		float percentBonus = 1.0f + (damagePercent * 0.002f);
+		if (percentBonus > 1.25f) { percentBonus = 1.25f; }
+
+		float finalHitstun = hitstunSeconds * comboDecay * percentBonus;
+		if (finalHitstun < 0.18f) { finalHitstun = 0.18f; }
+
+		if (isBlocking) {
+			float blockedDamage = damage * 0.35f;
+			addDamage(blockedDamage);
+
+			shield -= damage * 3.0f;
+			if (shield < 0.f) { shield = 0.f; }
+			shieldRegenDelayTimer = shieldRegenDelay;
+			if (shield <= 0.f) {
+				shieldBroken = true;
+				shieldBreakTimer = shieldBreakDuration;
+				blockstunTimer = shieldBreakDuration;
+				isBlocking = false;
+				stopRun();
+				stopDodge();
+			}
+
+			sf::Vector2f reducedKB{ scaledKnockback.x * 0.25f, scaledKnockback.y * 0.15f };
+			float reducedBlockstun = finalHitstun * 0.65f;
+			if (reducedBlockstun < 0.10f) { reducedBlockstun = 0.10f; }
+
+			//Block prevents knockdown
 			knockdown = false;
 			knockdownSeconds = 0.f;
 
 			//Apply reduced impact
-			hitstunTimer = reducedStun;
+			blockstunTimer = reducedBlockstun;
+			hitstunTimer = 0;
+			knockdownTimer = 0.f;
+			isBlocking = false;
 			velocity = reducedKB;
 			onGround = false;
-
 			return;
 		}
+
+		// apply damage after percent-based change
+		addDamage(damage);
 
 		//Getting hit stops dodge
 		stopDodge();
@@ -476,18 +613,20 @@ struct Player {
 		chainIndex = -1;
 		chainTimer = 0.f;
 
-		hitstunTimer = hitstunSeconds;
-		if (knockdown) { knockdownTimer = knockdownSeconds; }
-		if (knockdown) {
+		hitstunTimer = finalHitstun;
+		
+		if (knockdown) { 
+			knockdownTimer = knockdownSeconds; 
 			stopRun();
 			stopDodge();
 			isBlocking = false;
-
-			//kill horizontal carry immediately
-			velocity.x = 0.f;
 		}
+		else {
+			knockdownTimer = 0.f;
+		}
+	
 
-		velocity = knockback;
+		velocity = scaledKnockback;
 		onGround = false;
 	}
 
@@ -551,6 +690,7 @@ struct Player {
 	// ----------------------------
 	void update(float dt, const std::vector<Platform>& platforms) {
 		// Reset per-frame state
+		bool startedFrameAirborne = !onGround;
 		onGround = false;
 
 		// ----------------------------
@@ -601,6 +741,14 @@ struct Player {
 			if (heavyBufferTimer < 0.f) heavyBufferTimer = 0.f;
 		}
 
+		//-----------------------------
+		// Landing Lag Timer
+		//-----------------------------
+		if (landingLagTimer > 0.f) {
+			landingLagTimer -= dt;
+			if (landingLagTimer < 0.f) { landingLagTimer = 0.f; }
+		}
+
 		// ----------------------------
 		// Attack timer + hit-confirm memory
 		// ----------------------------
@@ -628,6 +776,37 @@ struct Player {
 			}
 		}
 
+		//--------------------------
+		// Hitscaling Timer
+		//--------------------------
+		if (comboTimer > 0.f) {
+			comboTimer -= dt;
+			if (comboTimer <= 0.f) {
+				comboTimer = 0.f;
+				comboCount = 0;
+			}
+		}
+
+		//--------------------------
+		// Shield Break Timer
+		//--------------------------
+		if (shieldBreakTimer > 0.f) {
+			shieldBreakTimer -= dt;
+			if (shieldBreakTimer < 0.f) { shieldBreakTimer = 0.f; }
+			if (shieldBreakTimer == 0.f) {
+				shieldBroken = false;
+			}
+		}
+
+		if (shieldRegenDelayTimer > 0.f) {
+			shieldRegenDelayTimer -= dt;
+			if (shieldRegenDelayTimer < 0.f) { shieldRegenDelayTimer = 0.f; }
+		}
+		else if (!isBlocking && !shieldBroken && shield < maxShield) {
+			shield += shieldRegenRate * dt;
+			if (shield > maxShield) { shield = maxShield; }
+		}
+
 		//-----------------------------
 		// Double-tap Timers
 		//-----------------------------
@@ -642,7 +821,7 @@ struct Player {
 		}
 
 		//----------------------------
-		// Run Ative Timer
+		// Run Active Timer
 		//----------------------------
 		if (runActiveTimer > 0.f) {
 			runActiveTimer -= dt;
@@ -671,6 +850,11 @@ struct Player {
 		if (dodgeCooldownTimer > 0.f) {
 			dodgeCooldownTimer -= dt;
 			if (dodgeCooldownTimer < 0.f) { dodgeCooldownTimer = 0.f; }
+		}
+
+		if (blockstunTimer > 0.f) {
+			blockstunTimer -= dt;
+			if (blockstunTimer < 0.f) { blockstunTimer = 0.f; }
 		}
 
 		// ----------------------------
@@ -770,7 +954,7 @@ struct Player {
 			//----------------------
 			// Block (hold)
 			//----------------------
-			if (!isDodging && defenseDown && sideDir == 0) {
+			if (!isDodging && defenseDown && sideDir == 0 && canBlock()) {
 				isBlocking = true;
 			}
 			else if (!defenseDown) {
@@ -868,7 +1052,6 @@ struct Player {
 				if (isRunning) { runActiveTimer = runActiveMin; }
 				velocity.x = dir * speed;
 				facingRight = (dir > 0);
-
 			}
 		}	
 
@@ -884,11 +1067,12 @@ struct Player {
 		if (!inHitstun() && isAttacking() && attack.current == AttackID::RunLight && attack.variant == AttackVariant::Side) {
 			const MoveData* m = currentMoveData();
 			float e = attackElapsed();
-			if (m && e <= m->slideDuration) { 
+			if (m && e <= m->slideDuration) {
 				float dir = facingRight ? 1.f : -1.f;
 				velocity.x = dir * m->slideSpeed; 
 			}
 		}
+		
 
 		//-----------------------------
 		// Stop leftover slide/run velocity during attacks
@@ -941,6 +1125,11 @@ struct Player {
 		}
 
 		// Vertical move + collide (solids + oneWays)
+		if (fastFalling) {
+			velocity.y += fastFallSpeedBonus * dt;
+		}
+
+
 		body.move({ 0.f, velocity.y * dt });
 		playerBounds = body.getGlobalBounds();
 
@@ -958,8 +1147,19 @@ struct Player {
 				if (velocity.y > 0.f && wasAbove) {
 					body.setPosition({ body.getPosition().x, platformBounds.position.y - height });
 					velocity.y = 0.f;
+					bool landedThisFrame = !onGround;
 					onGround = true;
 					jumpsRemaining = maxJumps;
+					fastFalling = false;
+
+					if (landedThisFrame && startedFrameAirborne) {
+						if (attack.current == AttackID::Heavy) {
+							landingLagTimer = landingLagHeavy;
+						}
+						else if (isAttacking()) {
+							landingLagTimer = landingLagLight;
+						}
+					}
 					playerBounds = body.getGlobalBounds();
 				}
 			}
@@ -969,8 +1169,16 @@ struct Player {
 		// Drop-through + Jump (disabled in hitstun)
 		// ----------------------------
 		if (!inHitstun()) {
+			// Fast Fall
+			bool downHeld = sf::Keyboard::isKeyPressed(controls.down);
+			bool downPressed = downHeld && !downWasDown;
+			downWasDown = downHeld;
+			if (!onGround && velocity.y > 0.f && downPressed && !fastFalling) {
+				fastFalling = true;
+			}
+
 			// Drop-Through (S while grounded)
-			if (onGround && sf::Keyboard::isKeyPressed(controls.down)) {
+			if (onGround && downHeld) {
 				dropping = true;
 				dropTimer = dropDuration;
 				onGround = false;
@@ -1035,14 +1243,35 @@ struct Player {
 	// ----------------------------
 	// Rendering
 	// ----------------------------
-	void draw(sf::RenderWindow& window) const {
+	void draw(sf::RenderWindow& window, bool showStateTints = true) const {
 		if (!alive) return;
 
-		// tints invulnerable
-		sf::Color c = body.getFillColor();
-		c.a = isInvulnerable() ? 160 : 255;
-
 		sf::RectangleShape copy = body;
+		sf::Color c = body.getFillColor();
+
+		if (showStateTints) {
+			//Priority order
+			if (knockdownTimer > 0.f || knockdownLockTimer > 0.f) {
+				c = sf::Color(255, 140, 0); //orange
+			}
+			else if (isBlocking) {
+				c = sf::Color(80, 160, 255); //blue
+			}
+			else if (dodgeInvulnTimer > 0.f || isDodging) {
+				c = sf::Color(180, 0, 255); //purple
+			}
+			else if (hitstunTimer > 0.f) {
+				c = sf::Color(255, 120, 120);//light red
+			}
+		}
+
+		if (isInvulnerable()) {
+			c.a = 160;
+		}
+		else {
+			c.a = 255;
+		}
+		
 		copy.setFillColor(c);
 		window.draw(copy);
 	}
