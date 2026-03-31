@@ -25,20 +25,23 @@ struct Player {
 	float runSpeed = 520.f;
 	float gravity = 2000.f;
 	float jumpForce = -700.f;
+
+	float airAccel = 1800.f;
+	float airDecel = 1400.f;
+	float airMaxSpeed = 260.f;
+
 	bool fastFalling = false;
 	float fastFallSpeedBonus = 1400.f;
 	bool downWasDown = false;
-	/*float airAccel = 1800.f;
-	float airDecel = 1400.f;
-	float airMaxSpeed = 260.f;*/ //not using these yet
+	
 
 	float landingLagTimer = 0.f;
 	float landingLagLight = 0.06f;
 	float landingLagHeavy = 0.12f;
 
 	//Jump system(double jumps + multple jumps later)
-	int maxJumps = 2; //ground jump + midair jump
-	int jumpsRemaining = 2; //refilled on landing
+	int maxJumps = 1; //ground jump + midair jump
+	int jumpsRemaining = 1; //refilled on landing
 	bool jumpWasDown = false;
 
 	bool isRunning = false;
@@ -925,7 +928,9 @@ struct Player {
 		// Movement input (disabled in hitstun/attacking)
 		// ----------------------------
 		if (!movementLocked()) {
-			velocity.x = 0.f;
+			if (onGround) {
+				velocity.x = 0.f;
+			}
 
 			bool leftDown = sf::Keyboard::isKeyPressed(controls.left);
 			bool rightDown = sf::Keyboard::isKeyPressed(controls.right);
@@ -1048,10 +1053,32 @@ struct Player {
 					runDir = dir;
 				}
 
-				float speed = isRunning ? runSpeed : walkSpeed;
-				if (isRunning) { runActiveTimer = runActiveMin; }
-				velocity.x = dir * speed;
-				facingRight = (dir > 0);
+				if (onGround) {
+					float speed = isRunning ? runSpeed : walkSpeed;
+					if (isRunning) { runActiveTimer = runActiveMin; }
+					velocity.x = dir * speed;
+				}
+				else {
+					if (dir != 0) {
+						velocity.x += dir * airAccel * dt;
+
+						if (velocity.x > airMaxSpeed) { velocity.x = airMaxSpeed; }
+						if (velocity.x < -airMaxSpeed) { velocity.x = -airMaxSpeed; }
+					}
+					else {
+						if (velocity.x > 0.f) {
+							velocity.x -= airDecel * dt;
+							if (velocity.x < 0.f) { velocity.x = 0.f; }
+						}
+						else if (velocity.x < 0.f) {
+							velocity.x += airDecel * dt;
+							if (velocity.x > 0.f) { velocity.x = 0.f; }
+						}
+					}
+				}
+				if (dir != 0) {
+					facingRight = (dir > 0);
+				}
 			}
 		}	
 
