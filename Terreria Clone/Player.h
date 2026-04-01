@@ -26,9 +26,13 @@ struct Player {
 	float gravity = 2000.f;
 	float jumpForce = -700.f;
 
+	float groundFriction = 2600.f;
+	float runGroundFriction = 2200.f;
+
 	float airAccel = 1800.f;
 	float airDecel = 1400.f;
 	float airMaxSpeed = 260.f;
+	float airCarryMaxSpeed = 520.f;
 
 	bool fastFalling = false;
 	float fastFallSpeedBonus = 1400.f;
@@ -693,6 +697,7 @@ struct Player {
 	// ----------------------------
 	void update(float dt, const std::vector<Platform>& platforms) {
 		// Reset per-frame state
+		bool wasGroundedAtFrameStart = onGround;
 		bool startedFrameAirborne = !onGround;
 		onGround = false;
 
@@ -928,10 +933,6 @@ struct Player {
 		// Movement input (disabled in hitstun/attacking)
 		// ----------------------------
 		if (!movementLocked()) {
-			if (onGround) {
-				velocity.x = 0.f;
-			}
-
 			bool leftDown = sf::Keyboard::isKeyPressed(controls.left);
 			bool rightDown = sf::Keyboard::isKeyPressed(controls.right);
 			bool leftPressed = leftDown && !leftWasDownMove;
@@ -1027,11 +1028,11 @@ struct Player {
 			int dir = 0;
 			if (leftDown && !rightDown) { dir = -1; }
 			else if (rightDown && !leftDown) { dir = +1; }
-			else { dir = 0; } //none or both
 
-			//Stop running if you let go or switch direction
+			//----------------------------
+			// Running state logic
+			//----------------------------
 			if (dir == 0) {
-				//short grace period (direction switches)
 				if (isRunning) {
 					runStopGraceTimer -= dt;
 					if (runStopGraceTimer <= 0.f) {
@@ -1045,39 +1046,65 @@ struct Player {
 				}
 			}
 			else {
-				//holding a direction, so refresh grace period
 				runStopGraceTimer = runStopGraceMax;
 
-				//if already running, changing direction keeps you running
-				if(isRunning) {
+				if (isRunning) {
 					runDir = dir;
 				}
+			}
 
-				if (onGround) {
+			//----------------------------
+			// Horizontal movement
+			//----------------------------
+			if (wasGroundedAtFrameStart) {
+
+				if (dir != 0) {
 					float speed = isRunning ? runSpeed : walkSpeed;
 					if (isRunning) { runActiveTimer = runActiveMin; }
+
 					velocity.x = dir * speed;
+					facingRight = (dir > 0);
 				}
 				else {
-					if (dir != 0) {
-						velocity.x += dir * airAccel * dt;
+					float friction = isRunning ? runGroundFriction : groundFriction;
 
-						if (velocity.x > airMaxSpeed) { velocity.x = airMaxSpeed; }
-						if (velocity.x < -airMaxSpeed) { velocity.x = -airMaxSpeed; }
+					if (velocity.x > 0.f) {
+						velocity.x -= friction * dt;
+						if (velocity.x < 0.f) velocity.x = 0.f;
 					}
-					else {
-						if (velocity.x > 0.f) {
-							velocity.x -= airDecel * dt;
-							if (velocity.x < 0.f) { velocity.x = 0.f; }
-						}
-						else if (velocity.x < 0.f) {
-							velocity.x += airDecel * dt;
-							if (velocity.x > 0.f) { velocity.x = 0.f; }
-						}
+					else if (velocity.x < 0.f) {
+						velocity.x += friction * dt;
+						if (velocity.x > 0.f) velocity.x = 0.f;
 					}
 				}
+			}
+			else {
 				if (dir != 0) {
+					velocity.x += dir * airAccel * dt;
+
+					//Only clamp if player is trying to push BEYOND current carried momentum
+					if (dir > 0 && velocity.x > airMaxSpeed && velocity.x < runSpeed) {
+						velocity.x = airMaxSpeed;
+					}
+					if (dir < 0 && velocity.x < -airMaxSpeed && velocity.x > -runSpeed) {
+						velocity.x = -airMaxSpeed;
+					}
+
+					//Preserve stronger takeoff momentum from running
+					if (velocity.x > runSpeed) velocity.x = runSpeed;
+					if (velocity.x < -runSpeed) velocity.x = -runSpeed;
+
 					facingRight = (dir > 0);
+				}
+				else {
+					if (velocity.x > 0.f) {
+						velocity.x -= airDecel * dt;
+						if (velocity.x < 0.f) velocity.x = 0.f;
+					}
+					else if (velocity.x < 0.f) {
+						velocity.x += airDecel * dt;
+						if (velocity.x > 0.f) velocity.x = 0.f;
+					}
 				}
 			}
 		}	
@@ -1237,7 +1264,7 @@ struct Player {
 			hitstunTimer -= dt;
 			if (hitstunTimer < 0.f) hitstunTimer = 0.f;
 		}
-
+		/*
 		//------------------------------
 		//Knockdown Timer
 		//------------------------------
@@ -1264,9 +1291,23 @@ struct Player {
 		if (knockdownLockTimer > 0.f) {
 			knockdownLockTimer -= dt;
 			if (knockdownLockTimer < 0.f) { knockdownLockTimer = 0.f; }
+		}*/
+
+		//------------------------
+		// Horizontal Drag
+		//------------------------
+		if ((hitstunTimer > 0.f || knockdownTimer > 0.f || blockstunTimer > 0.f) && onGround) {
+			if (velocity.x > 0.f) {
+				velocity.x -= groundFriction * dt;
+				if (velocity.x < 0.f) { velocity.x = 0.f; }
+			}
+			else if (velocity.x < 0.f) {
+				velocity.x += groundFriction * dt;
+				if (velocity.x > 0.f) { velocity.x = 0.f; }
+			}
 		}
 	}
-
+		
 	// ----------------------------
 	// Rendering
 	// ----------------------------
