@@ -817,9 +817,11 @@ int main() {
 				"P1 DodgeCD: " + fmt2(player1.dodgeCooldownTimer) +
 				"\nP1 Invuln: " + fmt2(player1.spawnInvulnTimer) +
 				"\nP1 Hitstop: " + fmt2(player1.hitstopTimer) +
+				"\nP1 Fast Fall: " + std::string(player1.fastFalling ? "YES" : "NO") +
 				"\n\nP2 DodgeCD: " + fmt2(player2.dodgeCooldownTimer) +
 				"\nP2 Invuln: " + fmt2(player2.spawnInvulnTimer) +
-				"\nP2 Hitstop: " + fmt2(player2.hitstopTimer)
+				"\nP2 Hitstop: " + fmt2(player2.hitstopTimer) +
+				"\nP2 Fast Fall: " + std::string(player2.fastFalling ? "YES" : "NO")
 			);
 
 			window.draw(timerDebug);

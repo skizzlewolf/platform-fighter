@@ -26,17 +26,22 @@ struct Player {
 	float gravity = 2000.f;
 	float jumpForce = -700.f;
 
+	float jumpHoldGravityMultiplier = 0.55f;
+	float jumpReleaseGravityMultiplier = 1.35f;
+	float maxJumpHoldTime = 0.14f;
+	float jumpHoldTimer = 0.f;
+
 	float groundFriction = 2600.f;
 	float runGroundFriction = 2200.f;
 
 	float airAccel = 1800.f;
 	float airDecel = 1400.f;
 	float airMaxSpeed = 260.f;
-	float airCarryMaxSpeed = 520.f;
+	
 
 	bool fastFalling = false;
-	float fastFallSpeedBonus = 1400.f;
-	bool downWasDown = false;
+	float fastFallSpeed = 650.f; //minimum downward speed when fast-fall starts
+	float fastFallGravityBonus = 1600.f;
 	
 
 	float landingLagTimer = 0.f;
@@ -98,7 +103,7 @@ struct Player {
 	// Autocombo state
 	int chainIndex = -1;       // -1 means not in chain
 	float chainTimer = 0.f;    // time left to press light again to continue
-	float chainWindow = 0.45f; // how long autocombo allows
+	float chainWindow = 0.60f; // how long autocombo allows
 	bool lastAttackHit = false;
 
 	// Edge-detection (one-press triggers)
@@ -113,6 +118,7 @@ struct Player {
 	float heavyBufferTimer = 0.f;
 	float lightBufferTimer = 0.f;
 	float inputBufferWindow = 0.18f; // tweak later*********
+	AttackID queuedAttack = AttackID::None;
 
 	//Damage Percent Tracking
 	float damagePercent = 0.0f;
@@ -242,8 +248,8 @@ struct Player {
 			.cancelEnd = 0.f,
 			.cancelOnHitOnly = true,
 
-			.slideSpeed = 220.f,
-			.slideDuration = 0.07f
+			.slideSpeed = 150.f,
+			.slideDuration = 0.045f
 		};
 	}
 
@@ -343,6 +349,27 @@ struct Player {
 		if (m->cancelOnHitOnly && !attack.hasHit) { return false; }
 
 		return true;
+	}
+
+	//allow smooth combo from light 2 -> light 3
+	bool canChainToNextLight() const {
+		if (!isAttacking()) { return false; }
+
+		if (!(attack.current == AttackID::Light1 || attack.current == AttackID::Light2)) { 
+			return false;
+		}
+
+		const MoveData* m = currentMoveData();
+		if (!m) { return false; }
+
+		// Must have actually connected
+		if (!attack.hasHit) { return false; }
+
+		float e = attackElapsed();
+		float recoveryStart = m->startup + m->active;
+		float chainEnd = recoveryStart + (m->recovery * 0.85f);
+
+		return e >= recoveryStart && e <= chainEnd;
 	}
 
 	//-------------------------
@@ -526,6 +553,7 @@ struct Player {
 		lightBufferTimer = 0.f;
 		heavyBufferTimer = 0.f;
 		hitstopTimer = 0.f;
+		queuedAttack = AttackID::None;
 
 		//resets 
 		resetDamage();
@@ -619,6 +647,9 @@ struct Player {
 		// reset chain (optional)
 		chainIndex = -1;
 		chainTimer = 0.f;
+		queuedAttack = AttackID::None;
+		lightBufferTimer = 0.f;
+		heavyBufferTimer = 0.f;
 
 		hitstunTimer = finalHitstun;
 		
@@ -670,16 +701,28 @@ struct Player {
 			attack.variant = (holdLeft || holdRight) ? AttackVariant::Side : AttackVariant::Neutral;
 		}
 
+		bool preserveMomentum =
+			(id == AttackID::RunLight) ||
+			(id == AttackID::Heavy) ||
+			(id == AttackID::Light1 && attack.variant == AttackVariant::Side);
+
+		//Ground neutral attacks should not inherit leftover movement carry
+		if (!preserveMomentum && velocity.y == 0.f) {
+			velocity.x = 0.f;
+		}
+
 		const MoveData* m = currentMoveData();
 		attack.timer = m ? (m->startup + m->active + m->recovery) : 0.f;
 	}
 
 	void startNextLightChain() {
-		// if not in chain, start at 0
+		// start fresh
 		if (chainIndex < 0) { chainIndex = 0; }
-		else { chainIndex++; }
-
-		if (chainIndex > 2) { // end of chain
+		// advance from light1 -> light2
+		else if(chainIndex < 2){ 
+			chainIndex++; 
+		}
+		else {
 			chainIndex = -1;
 			return;
 		}
@@ -749,6 +792,10 @@ struct Player {
 			if (heavyBufferTimer < 0.f) heavyBufferTimer = 0.f;
 		}
 
+		if (lightBufferTimer <= 0.f && heavyBufferTimer <= 0.f) {
+			queuedAttack = AttackID::None;
+		}
+
 		//-----------------------------
 		// Landing Lag Timer
 		//-----------------------------
@@ -773,9 +820,14 @@ struct Player {
 				// record hit-confirm result for chaining/buffering logic
 				lastAttackHit = finishedHit;
 
-				// open chain window only if the finished light actually hit
+				// record hit-confirm result for debugging / fallback logic
 				if (isLightAttack(finished) && finishedHit) {
 					chainTimer = chainWindow;
+
+					// if player did NOT already buffer another light, reset chain
+					if (!(queuedAttack == AttackID::Light1 && lightBufferTimer > 0.f)) {
+						chainIndex = -1;
+					}
 				}
 				else {
 					chainTimer = 0.f;
@@ -876,44 +928,56 @@ struct Player {
 		bool heavyPressed = heavyDown && !heavyWasDown;
 		heavyWasDown = heavyDown;
 
-		if (lightPressed) { lightBufferTimer = inputBufferWindow; }
-		if (heavyPressed) { heavyBufferTimer = inputBufferWindow; }
+		if (lightPressed) { 
+			lightBufferTimer = inputBufferWindow; 
+			queuedAttack = AttackID::Light1;
+		}
+		if (heavyPressed) { 
+			heavyBufferTimer = inputBufferWindow; 
+			queuedAttack = AttackID::Heavy;
+		}
 
 		// ----------------------------
 		// Spend buffered inputs (priority: heavy then light)
 		// ----------------------------
-		if (canSpendBufferedInputs()) {
-			// heavy buffered: try cancel first
-			if (heavyBufferTimer > 0.f) {
-				if (isAttacking() && canCancelToHeavy()) {
-					// cancel current light into heavy
-					attack.current = AttackID::None;
-					attack.timer = 0.f;
-					attack.hasHit = false;
+		if (queuedAttack != AttackID::None) {
 
-					chainIndex = -1;
-					chainTimer = 0.f;
+			// Heavy intent
+			if (queuedAttack == AttackID::Heavy && heavyBufferTimer > 0.f) {
+				if (canSpendBufferedInputs()) {
+					if (isAttacking() && canCancelToHeavy()) {
+						attack.current = AttackID::None;
+						attack.timer = 0.f;
+						attack.hasHit = false;
 
-					heavyBufferTimer = 0.f;
-					startAttack(AttackID::Heavy);
-				}
-				else if (!isAttacking()) {
-					chainIndex = -1;
-					chainTimer = 0.f;
+						chainIndex = -1;
+						chainTimer = 0.f;
 
-					heavyBufferTimer = 0.f;
-					startAttack(AttackID::Heavy);
+						heavyBufferTimer = 0.f;
+						queuedAttack = AttackID::None;
+						startAttack(AttackID::Heavy);
+					}
+					else if (!isAttacking()) {
+						chainIndex = -1;
+						chainTimer = 0.f;
+
+						heavyBufferTimer = 0.f;
+						queuedAttack = AttackID::None;
+						startAttack(AttackID::Heavy);
+					}
 				}
 			}
 
-			// light buffered: start / continue chain if allowed
-			if (lightBufferTimer > 0.f) {
-				if (!isAttacking()) {
+			// Light intent
+			else if (queuedAttack == AttackID::Light1 && lightBufferTimer > 0.f) {
+
+				// Start fresh
+				if (canSpendBufferedInputs() && !isAttacking()) {
 					lightBufferTimer = 0.f;
+					queuedAttack = AttackID::None;
 
 					bool canRunSlide = (isRunning && runActiveTimer > 0.f);
 					if (canRunSlide) {
-						//Run Light = slide
 						chainIndex = -1;
 						chainTimer = 0.f;
 						startAttack(AttackID::RunLight);
@@ -922,8 +986,16 @@ struct Player {
 						startNextLightChain();
 					}
 				}
-				else if (chainTimer > 0.f && lastAttackHit) {
+
+				//Chain only on hit-confirm during valid window
+				else if (isAttacking() && canChainToNextLight()) {
 					lightBufferTimer = 0.f;
+					queuedAttack = AttackID::None;
+
+					attack.current = AttackID::None;
+					attack.timer = 0.f;
+					attack.hasHit = false;
+
 					startNextLightChain();
 				}
 			}
@@ -1129,16 +1201,22 @@ struct Player {
 		
 
 		//-----------------------------
-		// Stop leftover slide/run velocity during attacks
+		// Stop unwanted horizontal override during attacks
 		//-----------------------------
 		if (!inHitstun() && isAttacking()) {
-			bool allowSlide =
+			bool allowSideLightCarry =
 				(attack.current == AttackID::Light1 && attack.variant == AttackVariant::Side);
-			bool allowRunSlide =
+			bool allowRunLightCarry =
 				(attack.current == AttackID::RunLight);
+			bool allowHeavyCarry =
+				(attack.current == AttackID::Heavy);
 
-			if (!allowSlide && !allowRunSlide) {
-				velocity.x = 0.f;
+
+			// use frame-start grounded state, not curent onGround
+			if (!allowSideLightCarry && !allowRunLightCarry && !allowHeavyCarry) {
+				if (wasGroundedAtFrameStart) {
+					velocity.x = 0.f;
+				}
 			}
 		}
 
@@ -1155,7 +1233,22 @@ struct Player {
 		sf::Vector2f previousPosition = body.getPosition();
 
 		// Gravity
-		velocity.y += dt * gravity;
+		bool jumpHeldNow = sf::Keyboard::isKeyPressed(controls.jump);
+
+		float appliedGravity = gravity;
+
+		if (!onGround && velocity.y < 0.f) {
+			if (jumpHeldNow && jumpHoldTimer > 0.f) {
+				appliedGravity *= jumpHoldGravityMultiplier;
+				jumpHoldTimer -= dt;
+				if (jumpHoldTimer < 0.f) { jumpHoldTimer = 0.f; }
+			}
+			else {
+				appliedGravity *= jumpReleaseGravityMultiplier;
+			}
+		}
+
+		velocity.y += dt * appliedGravity;
 
 		// Horizontal move + collide (solids)
 		body.move({ velocity.x * dt, 0.f });
@@ -1180,7 +1273,7 @@ struct Player {
 
 		// Vertical move + collide (solids + oneWays)
 		if (fastFalling) {
-			velocity.y += fastFallSpeedBonus * dt;
+			velocity.y += fastFallGravityBonus * dt;
 		}
 
 
@@ -1205,6 +1298,7 @@ struct Player {
 					onGround = true;
 					jumpsRemaining = maxJumps;
 					fastFalling = false;
+					jumpHoldTimer = 0.f;
 
 					if (landedThisFrame && startedFrameAirborne) {
 						if (attack.current == AttackID::Heavy) {
@@ -1225,10 +1319,14 @@ struct Player {
 		if (!inHitstun()) {
 			// Fast Fall
 			bool downHeld = sf::Keyboard::isKeyPressed(controls.down);
-			bool downPressed = downHeld && !downWasDown;
-			downWasDown = downHeld;
-			if (!onGround && velocity.y > 0.f && downPressed && !fastFalling) {
+			
+			if (!onGround && !dropping && velocity.y > 0.f && downHeld && !fastFalling) {
 				fastFalling = true;
+
+				// Snap into clearly faster fall immediately
+				if (velocity.y < fastFallSpeed) {
+					velocity.y = fastFallSpeed;
+				}
 			}
 
 			// Drop-Through (S while grounded)
@@ -1254,6 +1352,8 @@ struct Player {
 				velocity.y = jumpForce;
 				onGround = false;
 				jumpsRemaining--; 
+				jumpHoldTimer = maxJumpHoldTime;
+				fastFalling = false;
 			}
 		}
 
