@@ -9,35 +9,8 @@
 #include "GameTypes.h"
 #include "Stage.h"
 #include "Player.h"
+#include "UI.h"
 
-struct MenuButton {
-	sf::RectangleShape box;
-	sf::Text label;
-
-	MenuButton(const sf::Font& font, const sf::Vector2f& size)
-		: box(size), label(font) {
-		box.setFillColor(sf::Color(40, 40, 40));
-		box.setOutlineThickness(3.f);
-		box.setOutlineColor(sf::Color::White);
-
-		label.setCharacterSize(28);
-		label.setFillColor(sf::Color::White);
-	}
-
-	bool contains(const sf::Vector2f& mousePos) const {
-		return box.getGlobalBounds().contains(mousePos);
-	}
-};
-
-static void centerLabelInButton(MenuButton& b) {
-	sf::FloatRect textBounds = b.label.getLocalBounds();
-	sf::FloatRect boxBounds = b.box.getGlobalBounds();
-
-	b.label.setPosition({
-		boxBounds.position.x + (boxBounds.size.x - textBounds.size.x) * 0.5f - textBounds.position.x,
-		boxBounds.position.y + (boxBounds.size.y - textBounds.size.y) * 0.5f - textBounds.position.y - 2.f
-		});
-}
 
 int main() {
 	sf::RenderWindow window(sf::VideoMode({ 1080, 720 }), "*Pre-Alpha 4-Corners*");
@@ -101,33 +74,8 @@ int main() {
 	// ------------------------
 	bool isPaused = false;
 
-	enum class PauseMenuPage {
-		Main,
-		Training
-	};
-
-	PauseMenuPage pauseMenuPage = PauseMenuPage::Main;
-
-	int stageSelectIndex = 0;
-	int pauseMenuIndex = 0;
-	int trainingMenuIndex = 0;
-
-	// ------------------------
-	// Debug / Training Toggles
-	// ------------------------
-	bool debugShowHitboxes = true;
-	bool debugShowHurtboxes = false;
-	bool debugShowTimers = true;
-	bool debugShowComboHUD = true;
-	bool debugShowStateOverlays = true;
-	bool debugShowStateTints = true;
-
-	// ------------------------
-	// Menu Buttons
-	// ------------------------
-	std::vector<MenuButton> stageButtons;
-	std::vector<MenuButton> pauseButtons;
-	std::vector<MenuButton> trainingButtons;
+	MenuUIState ui;
+	DebugSettings debug;
 
 	auto fmt2 = [](float value) {
 		std::ostringstream out;
@@ -135,90 +83,18 @@ int main() {
 		return out.str();
 	};
 
-	auto makeVerticalButtons = [&](std::vector<MenuButton>& buttons, int count, sf::Vector2f start, sf::Vector2f size, float gap) {
-		buttons.clear();
-		for (int i = 0; i < count; i++) {
-			MenuButton b(font, size);
-			b.box.setPosition({ start.x, start.y + i * gap });
-			buttons.push_back(std::move(b));
-		}
-	};
-
-	makeVerticalButtons(stageButtons, 4, { 320.f, 200.f }, { 440.f, 64.f }, 78.f);
-	makeVerticalButtons(pauseButtons, 5, { 320.f, 190.f }, { 440.f, 64.f }, 80.f);
-	makeVerticalButtons(trainingButtons, 7, { 320.f, 130.f }, { 440.f, 64.f }, 68.f);
-
-	auto updateStageSelectMenu = [&]() {
-		title.setString("Select Stage");
-		title.setPosition({ 360.f, 95.f });
-
-		subtitle.setString("WASD / Arrows / Enter / Mouse");
-		subtitle.setPosition({ 320.f, 150.f });
-
-		stageButtons[0].label.setString(
-			std::string("Stage: Dojo") + (selectedStage == StageID::Dojo ? "   <" : "")
+	initializeMenus(ui, font);
+	
+	auto refreshMenus = [&]() {
+		updateAllMenus(
+			title,
+			subtitle,
+			ui,
+			selectedStage,
+			selectedMode,
+			currentMode,
+			debug
 		);
-		stageButtons[1].label.setString(
-			std::string("Stage: Kohona") + (selectedStage == StageID::Kohona ? "   <" : "")
-		);
-		stageButtons[2].label.setString(
-			std::string("Mode: ") + (selectedMode == GameMode::Training ? "Training" : "Versus")
-		);
-		stageButtons[3].label.setString("Start Match");
-
-		for (auto& b : stageButtons) {
-			centerLabelInButton(b);
-		}
-	};
-
-	auto updatePauseMenu = [&]() {
-		title.setString("Paused");
-		title.setPosition({ 430.f, 95.f });
-
-		subtitle.setString("WASD / Arrows / Enter / Mouse / Esc");
-		subtitle.setPosition({ 255.f, 145.f });
-
-		pauseButtons[0].label.setString("Resume");
-		pauseButtons[1].label.setString("Restart Match");
-		pauseButtons[2].label.setString("Return to Stage Select");
-		pauseButtons[3].label.setString("Settings (Later)");
-
-		if (currentMode == GameMode::Training) {
-			pauseButtons[4].label.setString("Training Settings");
-		}
-		else {
-			pauseButtons[4].label.setString("");
-		}
-
-		for (auto& b : pauseButtons) {
-			centerLabelInButton(b);
-		}
-	};
-
-	auto updateTrainingMenu = [&]() {
-		title.setString("Training Settings");
-		title.setPosition({ 325.f, 90.f });
-
-		subtitle.setString("Enter or A/D to toggle   |   Esc to go back");
-		subtitle.setPosition({ 225.f, 140.f });
-
-		trainingButtons[0].label.setString(std::string("Show Hitboxes: ") + (debugShowHitboxes ? "ON" : "OFF"));
-		trainingButtons[1].label.setString(std::string("Show Hurtboxes: ") + (debugShowHurtboxes ? "ON" : "OFF"));
-		trainingButtons[2].label.setString(std::string("Show State Overlays: ") + (debugShowStateOverlays ? "ON" : "OFF"));
-		trainingButtons[3].label.setString(std::string("Show State Tints: ") + (debugShowStateTints ? "ON" : "OFF"));
-		trainingButtons[4].label.setString(std::string("Show Timers: ") + (debugShowTimers ? "ON" : "OFF"));
-		trainingButtons[5].label.setString(std::string("Show Combo HUD: ") + (debugShowComboHUD ? "ON" : "OFF"));
-		trainingButtons[6].label.setString("Back");
-
-		for (auto& b : trainingButtons) {
-			centerLabelInButton(b);
-		}
-	};
-
-	auto updateAllMenus = [&]() {
-		updateStageSelectMenu();
-		updatePauseMenu();
-		updateTrainingMenu();
 	};
 
 	auto startMatch = [&]() {
@@ -240,9 +116,9 @@ int main() {
 		}
 
 		isPaused = false;
-		pauseMenuPage = PauseMenuPage::Main;
-		pauseMenuIndex = 0;
-		trainingMenuIndex = 0;
+		ui.pauseMenuPage = PauseMenuPage::Main;
+		ui.pauseMenuIndex = 0;
+		ui.trainingMenuIndex = 0;
 
 		gameState = GameState::Playing;
 		clock.restart();
@@ -251,7 +127,7 @@ int main() {
 		camera.zoom(cameraZoom);
 		camera.setCenter(player1.center());
 
-		updateAllMenus();
+		refreshMenus();
 	};
 
 	auto restartMatch = [&]() {
@@ -270,9 +146,9 @@ int main() {
 		}
 
 		isPaused = false;
-		pauseMenuPage = PauseMenuPage::Main;
-		pauseMenuIndex = 0;
-		trainingMenuIndex = 0;
+		ui.pauseMenuPage = PauseMenuPage::Main;
+		ui.pauseMenuIndex = 0;
+		ui.trainingMenuIndex = 0;
 
 		clock.restart();
 		camera = window.getDefaultView();
@@ -281,24 +157,24 @@ int main() {
 		};
 
 	auto activateStageSelectItem = [&]() {
-		if (stageSelectIndex == 0) {
+		if (ui.stageSelectIndex == 0) {
 			selectedStage = StageID::Dojo;
 		}
-		else if (stageSelectIndex == 1) {
+		else if (ui.stageSelectIndex == 1) {
 			selectedStage = StageID::Kohona;
 		}
-		else if (stageSelectIndex == 2) {
+		else if (ui.stageSelectIndex == 2) {
 			selectedMode = (selectedMode == GameMode::Training) ? GameMode::Versus : GameMode::Training;
 		}
-		else if (stageSelectIndex == 3) {
+		else if (ui.stageSelectIndex == 3) {
 			startMatch();
 		}
 
-		updateStageSelectMenu();
+		refreshMenus();
 	};
 
 	auto activatePauseItem = [&]() {
-		switch (pauseMenuIndex) {
+		switch (ui.pauseMenuIndex) {
 		case 0:
 			isPaused = false;
 			break;
@@ -310,7 +186,7 @@ int main() {
 		case 2:
 			isPaused = false;
 			gameState = GameState::StageSelect;
-			stageSelectIndex = (selectedStage == StageID::Dojo) ? 0 : 1;
+			ui.stageSelectIndex = (selectedStage == StageID::Dojo) ? 0 : 1;
 			break;
 
 		case 3:
@@ -319,44 +195,45 @@ int main() {
 
 		case 4:
 			if (currentMode == GameMode::Training) {
-				pauseMenuPage = PauseMenuPage::Training;
-				trainingMenuIndex = 0;
+				ui.pauseMenuPage = PauseMenuPage::Training;
+				ui.trainingMenuIndex = 0;
 			}
 			break;
 		}
 
-		updateAllMenus();
+		refreshMenus();
 	};
 
 	auto activateTrainingItem = [&]() {
-		switch (trainingMenuIndex) {
+		switch (ui.trainingMenuIndex) {
 		case 0:
-			debugShowHitboxes = !debugShowHitboxes;
+			debug.showHitboxes = !debug.showHitboxes;
 			break;
 		case 1:
-			debugShowHurtboxes = !debugShowHurtboxes;
+			debug.showHurtboxes = !debug.showHurtboxes;
 			break;
 		case 2:
-			debugShowStateOverlays = !debugShowStateOverlays;
+			debug.showStateOverlays = !debug.showStateOverlays;
 			break;
 		case 3:
-			debugShowStateTints = !debugShowStateTints;
+			debug.showStateTints = !debug.showStateTints;
+			break;
 		case 4:
-			debugShowTimers = !debugShowTimers;
+			debug.showTimers = !debug.showTimers;
 			break;
 		case 5:
-			debugShowComboHUD = !debugShowComboHUD;
+			debug.showComboHUD = !debug.showComboHUD;
 			break;
 		case 6:
-			pauseMenuPage = PauseMenuPage::Main;
-			pauseMenuIndex = 0;
+			ui.pauseMenuPage = PauseMenuPage::Main;
+			ui.pauseMenuIndex = 0;
 			break;
 		}
 
-		updateTrainingMenu();
+		refreshMenus();
 	};
 
-	updateAllMenus();
+	refreshMenus();
 
 	while (window.isOpen()) {
 		while (const std::optional<sf::Event> event = window.pollEvent()) {
@@ -374,26 +251,32 @@ int main() {
 				// -------------------------------
 				if (gameState == GameState::StageSelect) {
 					if (key->code == sf::Keyboard::Key::W || key->code == sf::Keyboard::Key::Up) {
-						stageSelectIndex--;
-						if (stageSelectIndex < 0) stageSelectIndex = 3;
+						ui.stageSelectIndex--;
+						if (ui.stageSelectIndex < 0) ui.stageSelectIndex = 3;
 					}
 					else if (key->code == sf::Keyboard::Key::S || key->code == sf::Keyboard::Key::Down) {
-						stageSelectIndex++;
-						if (stageSelectIndex > 3) stageSelectIndex = 0;
+						ui.stageSelectIndex++;
+						if (ui.stageSelectIndex > 3) ui.stageSelectIndex = 0;
 					}
 					else if (
-						stageSelectIndex == 2 &&
-						key->code == sf::Keyboard::Key::A || key->code == sf::Keyboard::Key::Left || key->code == sf::Keyboard::Key::D || key->code == sf::Keyboard::Key::Right) {
+						ui.stageSelectIndex == 2 &&
+						(
+							key->code == sf::Keyboard::Key::A ||
+							key->code == sf::Keyboard::Key::Left ||
+							key->code == sf::Keyboard::Key::D ||
+							key->code == sf::Keyboard::Key::Right
+							)
+						) {
 						selectedMode = (selectedMode == GameMode::Training) ? GameMode::Versus : GameMode::Training;
 					}
 					else if (key->code == sf::Keyboard::Key::Enter) {
 						activateStageSelectItem();
 					}
 
-					if (stageSelectIndex == 0) selectedStage = StageID::Dojo;
-					if (stageSelectIndex == 1) selectedStage = StageID::Kohona;
+					if (ui.stageSelectIndex == 0) selectedStage = StageID::Dojo;
+					if (ui.stageSelectIndex == 1) selectedStage = StageID::Kohona;
 
-					updateStageSelectMenu();
+					refreshMenus();
 				}
 
 				// -------------------------------
@@ -403,44 +286,44 @@ int main() {
 					if (key->code == sf::Keyboard::Key::Escape) {
 						if (!isPaused) {
 							isPaused = true;
-							pauseMenuPage = PauseMenuPage::Main;
-							pauseMenuIndex = 0;
+							ui.pauseMenuPage = PauseMenuPage::Main;
+							ui.pauseMenuIndex = 0;
 						}
 						else {
-							if (pauseMenuPage == PauseMenuPage::Training) {
-								pauseMenuPage = PauseMenuPage::Main;
-								pauseMenuIndex = 0;
+							if (ui.pauseMenuPage == PauseMenuPage::Training) {
+								ui.pauseMenuPage = PauseMenuPage::Main;
+								ui.pauseMenuIndex = 0;
 							}
 							else {
 								isPaused = false;
 							}
 						}
-						updateAllMenus();
+						refreshMenus();
 					}
 					else if (isPaused) {
-						if (pauseMenuPage == PauseMenuPage::Main) {
+						if (ui.pauseMenuPage == PauseMenuPage::Main) {
 							int pauseItemMax = (currentMode == GameMode::Training) ? 4 : 3;
 
 							if (key->code == sf::Keyboard::Key::W || key->code == sf::Keyboard::Key::Up) {
-								pauseMenuIndex--;
-								if (pauseMenuIndex < 0) pauseMenuIndex = pauseItemMax;
+								ui.pauseMenuIndex--;
+								if (ui.pauseMenuIndex < 0) ui.pauseMenuIndex = pauseItemMax;
 							}
 							else if (key->code == sf::Keyboard::Key::S || key->code == sf::Keyboard::Key::Down) {
-								pauseMenuIndex++;
-								if (pauseMenuIndex > pauseItemMax) pauseMenuIndex = 0;
+								ui.pauseMenuIndex++;
+								if (ui.pauseMenuIndex > pauseItemMax) ui.pauseMenuIndex = 0;
 							}
 							else if (key->code == sf::Keyboard::Key::Enter) {
 								activatePauseItem();
 							}
 						}
-						else if (pauseMenuPage == PauseMenuPage::Training) {
+						else if (ui.pauseMenuPage == PauseMenuPage::Training) {
 							if (key->code == sf::Keyboard::Key::W || key->code == sf::Keyboard::Key::Up) {
-								trainingMenuIndex--;
-								if (trainingMenuIndex < 0) trainingMenuIndex = 6;
+								ui.trainingMenuIndex--;
+								if (ui.trainingMenuIndex < 0) ui.trainingMenuIndex = 6;
 							}
 							else if (key->code == sf::Keyboard::Key::S || key->code == sf::Keyboard::Key::Down) {
-								trainingMenuIndex++;
-								if (trainingMenuIndex > 6) trainingMenuIndex = 0;
+								ui.trainingMenuIndex++;
+								if (ui.trainingMenuIndex > 6) ui.trainingMenuIndex = 0;
 							}
 							else if (key->code == sf::Keyboard::Key::A || key->code == sf::Keyboard::Key::Left ||
 								key->code == sf::Keyboard::Key::D || key->code == sf::Keyboard::Key::Right ||
@@ -462,30 +345,30 @@ int main() {
 				);
 
 				if (gameState == GameState::StageSelect) {
-					for (int i = 0; i < (int)stageButtons.size(); i++) {
-						if (stageButtons[i].contains(mousePos)) {
-							stageSelectIndex = i;
+					for (int i = 0; i < (int)ui.stageButtons.size(); i++) {
+						if (ui.stageButtons[i].contains(mousePos)) {
+							ui.stageSelectIndex = i;
 							if (i == 0) selectedStage = StageID::Dojo;
 							if (i == 1) selectedStage = StageID::Kohona;
 						}
 					}
-					updateStageSelectMenu();
+					refreshMenus();
 				}
 				else if (gameState == GameState::Playing && isPaused) {
-					if (pauseMenuPage == PauseMenuPage::Main) {
+					if (ui.pauseMenuPage == PauseMenuPage::Main) {
 						int pauseButtonCount = (currentMode == GameMode::Training) ? 5 : 4;
 
 						for (int i = 0; i < pauseButtonCount; i++) {
-							if (pauseButtons[i].contains(mousePos)) {
-								pauseMenuIndex = i;
+							if (ui.pauseButtons[i].contains(mousePos)) {
+								ui.pauseMenuIndex = i;
 								break;
 							}
 						}
 					}
-					else if (pauseMenuPage == PauseMenuPage::Training) {
-						for (int i = 0; i < (int)trainingButtons.size(); i++) {
-							if (trainingButtons[i].contains(mousePos)) {
-								trainingMenuIndex = i;
+					else if (ui.pauseMenuPage == PauseMenuPage::Training) {
+						for (int i = 0; i < (int)ui.trainingButtons.size(); i++) {
+							if (ui.trainingButtons[i].contains(mousePos)) {
+								ui.trainingMenuIndex = i;
 							}
 						}
 					}
@@ -503,9 +386,9 @@ int main() {
 					);
 
 					if (gameState == GameState::StageSelect) {
-						for (int i = 0; i < (int)stageButtons.size(); i++) {
-							if (stageButtons[i].contains(mousePos)) {
-								stageSelectIndex = i;
+						for (int i = 0; i < (int)ui.stageButtons.size(); i++) {
+							if (ui.stageButtons[i].contains(mousePos)) {
+								ui.stageSelectIndex = i;
 								if (i == 0) selectedStage = StageID::Dojo;
 								if (i == 1) selectedStage = StageID::Kohona;
 								activateStageSelectItem();
@@ -514,21 +397,21 @@ int main() {
 						}
 					}
 					else if (gameState == GameState::Playing && isPaused) {
-						if (pauseMenuPage == PauseMenuPage::Main) {
+						if (ui.pauseMenuPage == PauseMenuPage::Main) {
 							int pauseButtonCount = (currentMode == GameMode::Training) ? 5 : 4;
 
 							for (int i = 0; i < pauseButtonCount; i++) {
-								if (pauseButtons[i].contains(mousePos)) {
-									pauseMenuIndex = i;
+								if (ui.pauseButtons[i].contains(mousePos)) {
+									ui.pauseMenuIndex = i;
 									activatePauseItem();
 									break;
 								}
 							}
 						}
-						else if (pauseMenuPage == PauseMenuPage::Training) {
-							for (int i = 0; i < (int)trainingButtons.size(); i++) {
-								if (trainingButtons[i].contains(mousePos)) {
-									trainingMenuIndex = i;
+						else if (ui.pauseMenuPage == PauseMenuPage::Training) {
+							for (int i = 0; i < (int)ui.trainingButtons.size(); i++) {
+								if (ui.trainingButtons[i].contains(mousePos)) {
+									ui.trainingMenuIndex = i;
 									activateTrainingItem();
 									break;
 								}
@@ -543,22 +426,7 @@ int main() {
 		// Stage Select render
 		// -------------------------------
 		if (gameState == GameState::StageSelect) {
-			window.clear(sf::Color(12, 12, 12));
-			window.setView(window.getDefaultView());
-
-			window.draw(title);
-			window.draw(subtitle);
-
-			for (int i = 0; i < (int)stageButtons.size(); i++) {
-				bool selected = (i == stageSelectIndex);
-
-				stageButtons[i].box.setFillColor(selected ? sf::Color(70, 70, 110) : sf::Color(40, 40, 40));
-				stageButtons[i].box.setOutlineColor(selected ? sf::Color::Yellow : sf::Color::White);
-
-				window.draw(stageButtons[i].box);
-				window.draw(stageButtons[i].label);
-			}
-
+			drawStageSelectMenu(window, title, subtitle, ui);
 			window.display();
 			continue;
 		}
@@ -636,7 +504,7 @@ int main() {
 
 		for (auto& platform : platforms) window.draw(platform.shape);
 		bool trainingDebugAllowed = (currentMode == GameMode::Training);
-		bool showStateTintsNow = trainingDebugAllowed && debugShowStateTints;
+		bool showStateTintsNow = trainingDebugAllowed && debug.showStateTints;
 
 		player1.draw(window, showStateTintsNow);
 		player2.draw(window, showStateTintsNow);
@@ -658,7 +526,7 @@ int main() {
 		};
 
 		auto drawStateOverlays = [&](const Player& p) {
-			if (!debugShowStateOverlays) { return; }
+			if (!debug.showStateOverlays) { return; }
 			if (!p.alive) { return; }
 
 			// Block
@@ -735,7 +603,7 @@ int main() {
 		};
 
 		auto drawHurtboxDebug = [&](const Player& p) {
-			if (!debugShowHurtboxes) { return; }
+			if (!debug.showHurtboxes) { return; }
 			if (!p.alive) { return; }
 
 			sf::FloatRect hb = p.hurtbox();
@@ -749,17 +617,17 @@ int main() {
 			window.draw(r);
 		};
 
-		if (trainingDebugAllowed && debugShowHitboxes) {
+		if (trainingDebugAllowed && debug.showHitboxes) {
 			drawHitboxDebug(player1);
 			drawHitboxDebug(player2);
 		}
 
-		if (trainingDebugAllowed && debugShowStateOverlays) {
+		if (trainingDebugAllowed && debug.showStateOverlays) {
 			drawStateOverlays(player1);
 			drawStateOverlays(player2);
 		}
 
-		if (trainingDebugAllowed && debugShowHurtboxes) {
+		if (trainingDebugAllowed && debug.showHurtboxes) {
 			drawHurtboxDebug(player1);
 			drawHurtboxDebug(player2);
 		}
@@ -785,7 +653,7 @@ int main() {
 		window.draw(p1DamageText);
 		window.draw(p2DamageText);
 
-		if (debugShowComboHUD && currentMode == GameMode::Training) {
+		if (debug.showComboHUD && currentMode == GameMode::Training) {
 			sf::Text comboDebug(font);
 			comboDebug.setCharacterSize(20);
 			comboDebug.setFillColor(sf::Color::White);
@@ -807,7 +675,7 @@ int main() {
 			window.draw(comboDebug);
 		}
 
-		if (debugShowTimers && currentMode == GameMode::Training) {
+		if (debug.showTimers && currentMode == GameMode::Training) {
 			sf::Text timerDebug(font);
 			timerDebug.setCharacterSize(18);
 			timerDebug.setFillColor(sf::Color(220, 220, 220));
@@ -835,33 +703,7 @@ int main() {
 			overlay.setFillColor(sf::Color(0, 0, 0, 170));
 			window.draw(overlay);
 
-			window.draw(title);
-			window.draw(subtitle);
-
-			if (pauseMenuPage == PauseMenuPage::Main) {
-				int pauseButtonCount = (currentMode == GameMode::Training) ? 5 : 4;
-
-				for (int i = 0; i < pauseButtonCount; i++) {
-					bool selected = (i == pauseMenuIndex);
-
-					pauseButtons[i].box.setFillColor(selected ? sf::Color(70, 70, 110) : sf::Color(40, 40, 40));
-					pauseButtons[i].box.setOutlineColor(selected ? sf::Color::Yellow : sf::Color::White);
-
-					window.draw(pauseButtons[i].box);
-					window.draw(pauseButtons[i].label);
-				}
-			}
-			else if (pauseMenuPage == PauseMenuPage::Training) {
-				for (int i = 0; i < (int)trainingButtons.size(); i++) {
-					bool selected = (i == trainingMenuIndex);
-
-					trainingButtons[i].box.setFillColor(selected ? sf::Color(70, 70, 110) : sf::Color(40, 40, 40));
-					trainingButtons[i].box.setOutlineColor(selected ? sf::Color::Yellow : sf::Color::White);
-
-					window.draw(trainingButtons[i].box);
-					window.draw(trainingButtons[i].label);
-				}
-			}
+			drawPauseMenu(window, title, subtitle, ui,currentMode);
 		}
 
 		window.display();
