@@ -12,15 +12,78 @@
 #include "UI.h"
 
 
+static void drawStartScreen(sf::RenderWindow& window, sf::Font& font) {
+	window.clear(sf::Color(20, 20, 30));
+
+	sf::Text title(font);
+	title.setString("4-CORNERS");
+	title.setCharacterSize(64);
+	title.setFillColor(sf::Color::White);
+	title.setPosition({ 330.f, 180.f });
+
+	sf::Text prompt(font);
+	prompt.setString("Press Any Key");
+	prompt.setCharacterSize(30);
+	prompt.setFillColor(sf::Color(220, 220, 220));
+	prompt.setPosition({ 390.f,390.f });
+
+	window.draw(title);
+	window.draw(prompt);
+}
+
+static void drawSimpleVerticalMenu(
+	sf::RenderWindow& window,
+	sf::Font& font,
+	const std::string& header,
+	const std::vector<std::string>& options,
+	int selectedIndex
+) {
+	window.clear(sf::Color(25, 25, 35));
+
+	sf::Text title(font);
+	title.setString(header);
+	title.setCharacterSize(54);
+	title.setFillColor(sf::Color::White);
+	title.setPosition({ 80.f,70.f });
+	window.draw(title);
+
+	for (int i = 0; i < static_cast<int>(options.size()); i++) {
+		sf::Text item(font);
+		item.setString(options[i]);
+		item.setCharacterSize(36);
+		item.setPosition({ 120.f, 180.f + i * 70.f });
+		item.setFillColor(i == selectedIndex ? sf::Color::Yellow : sf::Color::White);
+		window.draw(item);
+	}
+}
+
+
 int main() {
 	sf::RenderWindow window(sf::VideoMode({ 1080, 720 }), "*Pre-Alpha 4-Corners*");
 	window.setFramerateLimit(60);
 
-	GameState gameState = GameState::StageSelect;
+	GameState gameState = GameState::StartScreen;
 	StageID selectedStage = StageID::Dojo;
 	StageID currentStage = StageID::Dojo;
 	GameMode selectedMode = GameMode::Training;
 	GameMode currentMode = GameMode::Training;
+
+	int mainMenuIndex = 0;
+	int modeMenuIndex = 0;
+
+	std::vector<std::string> mainMenuOptions = {
+		"Play",
+		"Training",
+		"Settings",
+		"Exit"
+	};
+
+	std::vector<std::string> modeMenuOptions = {
+		"1v1 Casual",
+		"2v2 Casual",
+		"Tournament",
+		"Back"
+	};
 
 	sf::Font font;
 	if (!font.openFromFile("COLONNA.ttf")) {
@@ -55,6 +118,7 @@ int main() {
 
 	std::vector<Platform> platforms;
 	std::vector<sf::Vector2f> spawns;
+	StageVisuals stageVisuals;
 	sf::Clock clock;
 
 	Player player1;
@@ -102,10 +166,10 @@ int main() {
 		currentMode = selectedMode;
 
 		if (currentStage == StageID::Dojo) {
-			buildTrainingStage(platforms, spawns);
+			buildDojoStage(platforms, spawns, stageVisuals);
 		}
 		else {
-			buildKohonaStage(platforms, spawns);
+			buildHiddenEmberStage(platforms, spawns, stageVisuals);
 		}
 
 		if (!spawns.empty()) {
@@ -132,10 +196,10 @@ int main() {
 
 	auto restartMatch = [&]() {
 		if (currentStage == StageID::Dojo) {
-			buildTrainingStage(platforms, spawns);
+			buildDojoStage(platforms, spawns, stageVisuals);
 		}
 		else {
-			buildKohonaStage(platforms, spawns);
+			buildHiddenEmberStage(platforms, spawns, stageVisuals);
 		}
 
 		if (!spawns.empty()) {
@@ -161,7 +225,7 @@ int main() {
 			selectedStage = StageID::Dojo;
 		}
 		else if (ui.stageSelectIndex == 1) {
-			selectedStage = StageID::Kohona;
+			selectedStage = StageID::HiddenEmber;
 		}
 		else if (ui.stageSelectIndex == 2) {
 			selectedMode = (selectedMode == GameMode::Training) ? GameMode::Versus : GameMode::Training;
@@ -233,6 +297,26 @@ int main() {
 		refreshMenus();
 	};
 
+	auto activateModeMenuItem = [&]() {
+		if (modeMenuIndex == 0) {
+			selectedMode = GameMode::Versus;
+			gameState = GameState::StageSelect;
+		}
+		else if (modeMenuIndex == 1) {
+			selectedMode = GameMode::Versus;
+			gameState = GameState::StageSelect;
+		}
+		else if (modeMenuIndex == 2) {
+			selectedMode = GameMode::Versus;
+			gameState = GameState::StageSelect;
+		}
+		else if (modeMenuIndex == 3) {
+			gameState = GameState::MainMenu;
+		}
+
+		refreshMenus();
+	};
+
 	refreshMenus();
 
 	while (window.isOpen()) {
@@ -241,15 +325,73 @@ int main() {
 				window.close();
 			}
 
+
 			// -------------------------------
 			// Keyboard input
 			// -------------------------------
 			if (const auto* key = event->getIf<sf::Event::KeyPressed>()) {
 
+				//--------------------------------
+				// Start Screen
+				//--------------------------------
+				if (gameState == GameState::StartScreen) {
+					gameState = GameState::MainMenu;
+				}
+
+				//--------------------------------
+				// Main Menu
+				//--------------------------------
+				else if (gameState == GameState::MainMenu) {
+					if (key->code == sf::Keyboard::Key::W || key->code == sf::Keyboard::Key::Up) {
+						mainMenuIndex--;
+						if (mainMenuIndex < 0) { mainMenuIndex = (int)mainMenuOptions.size() -1; }
+					}
+					else if (key->code == sf::Keyboard::Key::S || key->code == sf::Keyboard::Key::Down) {
+						mainMenuIndex++;
+						if (mainMenuIndex >= (int)mainMenuOptions.size()) { mainMenuIndex = 0; }
+					}
+					else if (key->code == sf::Keyboard::Key::Enter) {
+						if (mainMenuIndex == 0) {
+							gameState = GameState::ModeSelect;
+						}
+						else if (mainMenuIndex == 1) {
+							selectedMode = GameMode::Training;
+							gameState = GameState::StageSelect;
+						}
+						else if (mainMenuIndex == 2) {
+							gameState = GameState::Settings;
+						}
+						else if (mainMenuIndex == 3) {
+							window.close();
+						}
+					}
+
+				}
+
+				//--------------------------------
+				// Mode Select
+				//--------------------------------
+				else if (gameState == GameState::ModeSelect) {
+					if (key->code == sf::Keyboard::Key::W || key->code == sf::Keyboard::Key::Up) {
+						modeMenuIndex--;
+						if (modeMenuIndex < 0) { modeMenuIndex = (int)modeMenuOptions.size() -1; }
+					}
+					else if (key->code == sf::Keyboard::Key::S || key->code == sf::Keyboard::Key::Down) {
+						modeMenuIndex++;
+						if (modeMenuIndex >= (int)modeMenuOptions.size()) { modeMenuIndex = 0; }
+					}
+					else if (key->code == sf::Keyboard::Key::Enter) {
+						activateModeMenuItem();
+					}
+					else if (key->code == sf::Keyboard::Key::Escape) {
+						gameState = GameState::MainMenu;
+					}
+				}
+
 				// -------------------------------
 				// Stage Select
 				// -------------------------------
-				if (gameState == GameState::StageSelect) {
+				else if (gameState == GameState::StageSelect) {
 					if (key->code == sf::Keyboard::Key::W || key->code == sf::Keyboard::Key::Up) {
 						ui.stageSelectIndex--;
 						if (ui.stageSelectIndex < 0) ui.stageSelectIndex = 3;
@@ -274,7 +416,7 @@ int main() {
 					}
 
 					if (ui.stageSelectIndex == 0) selectedStage = StageID::Dojo;
-					if (ui.stageSelectIndex == 1) selectedStage = StageID::Kohona;
+					if (ui.stageSelectIndex == 1) selectedStage = StageID::HiddenEmber;
 
 					refreshMenus();
 				}
@@ -349,7 +491,7 @@ int main() {
 						if (ui.stageButtons[i].contains(mousePos)) {
 							ui.stageSelectIndex = i;
 							if (i == 0) selectedStage = StageID::Dojo;
-							if (i == 1) selectedStage = StageID::Kohona;
+							if (i == 1) selectedStage = StageID::HiddenEmber;
 						}
 					}
 					refreshMenus();
@@ -390,7 +532,7 @@ int main() {
 							if (ui.stageButtons[i].contains(mousePos)) {
 								ui.stageSelectIndex = i;
 								if (i == 0) selectedStage = StageID::Dojo;
-								if (i == 1) selectedStage = StageID::Kohona;
+								if (i == 1) selectedStage = StageID::HiddenEmber;
 								activateStageSelectItem();
 								break;
 							}
@@ -423,8 +565,59 @@ int main() {
 		}
 
 		// -------------------------------
-		// Stage Select render
+		// Start Screen render
 		// -------------------------------
+		if (gameState == GameState::StartScreen) {
+			drawStartScreen(window, font);
+			window.display();
+			continue;
+		}
+
+		//------------------------------
+		// Main Menu Render
+		//------------------------------
+		if (gameState == GameState::MainMenu) {
+			drawSimpleVerticalMenu(window, font, "MAIN MENU", mainMenuOptions, mainMenuIndex);
+			window.display();
+			continue;
+		}
+		
+		//-------------------------------
+		// Mode Select render
+		//-------------------------------
+		if (gameState == GameState::ModeSelect) {
+			drawSimpleVerticalMenu(window, font, "MODE SELECT", modeMenuOptions, modeMenuIndex);
+			window.display();
+			continue;
+		}
+
+		//---------------------------
+		// Settings render
+		//---------------------------
+		if (gameState == GameState::Settings) {
+			window.clear(sf::Color(20, 20, 30));
+
+			sf::Text titleText(font);
+			titleText.setString("SETTINGS");
+			titleText.setCharacterSize(54);
+			titleText.setFillColor(sf::Color::White);
+			titleText.setPosition({ 80.f,70.f });
+
+			sf::Text info(font);
+			info.setString("Settings screen placeholder\nPress ENTER or ESCAPE to go back");
+			info.setCharacterSize(28);
+			info.setFillColor(sf::Color(220, 220, 220));
+			info.setPosition({ 100.f,180.f });
+			window.draw(titleText);
+			window.draw(info);
+
+			window.display();
+			continue;
+		}
+
+		//----------------------------
+		// Stage Select render
+		//----------------------------
 		if (gameState == GameState::StageSelect) {
 			drawStageSelectMenu(window, title, subtitle, ui);
 			window.display();
@@ -502,12 +695,20 @@ int main() {
 		camera.setCenter(player1.center());
 		window.setView(camera);
 
-		for (auto& platform : platforms) window.draw(platform.shape);
+
+		//Stage layers
+		drawStageBackground(window, stageVisuals);
+		drawStageMidground(window, stageVisuals);
+		drawStagePlatforms(window, platforms);
+
+
 		bool trainingDebugAllowed = (currentMode == GameMode::Training);
 		bool showStateTintsNow = trainingDebugAllowed && debug.showStateTints;
 
 		player1.draw(window, showStateTintsNow);
 		player2.draw(window, showStateTintsNow);
+
+		drawStageForeground(window, stageVisuals);
 
 		auto baseColorFor = [&](AttackID id) {
 			switch (id) {

@@ -9,17 +9,44 @@
 
 enum class StageID {
 	Dojo,
-	Kohona
+	HiddenEmber
 };
 
 enum class GameState {
+	StartScreen,
+	MainMenu,
+	ModeSelect,
+	CharacterSelect,
+	TrainingSelect,
 	StageSelect,
-	Playing
+	Playing,
+	Results,
+	Settings
 };
 
 enum class GameMode {
 	Versus,
 	Training
+};
+
+enum class VictoryType {
+	Stocks,
+	Score
+};
+
+enum class MatchType {
+	Casual1v1,
+	Casual2v2,
+	Training,
+	Tournament,
+	Local,
+	Rank1v1,
+	Rank2v2
+};
+
+struct MatchRules {
+	MatchType matchType = MatchType::Casual1v1;
+	VictoryType victoryType = VictoryType::Stocks;
 };
 
 

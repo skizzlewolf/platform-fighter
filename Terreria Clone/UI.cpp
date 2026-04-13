@@ -64,7 +64,7 @@ void updateStageSelectMenu(
 		std::string("Stage: Dojo") + (selectedStage == StageID::Dojo ? "   <" : "")
 	);
 	ui.stageButtons[1].label.setString(
-		std::string("Stage: Kohona") + (selectedStage == StageID::Kohona ? "   <" : "")
+		std::string("Stage: Hidden Ember District") + (selectedStage == StageID::HiddenEmber ? "   <" : "")
 	);
 	ui.stageButtons[2].label.setString(
 		std::string("Mode: ") + (selectedMode == GameMode::Training ? "Training" : "Versus")

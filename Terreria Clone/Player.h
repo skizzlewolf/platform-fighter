@@ -49,8 +49,8 @@ struct Player {
 	float landingLagHeavy = 0.12f;
 
 	//Jump system(double jumps + multple jumps later)
-	int maxJumps = 1; //ground jump + midair jump
-	int jumpsRemaining = 1; //refilled on landing
+	int maxJumps = 2; //ground jump + midair jump
+	int jumpsRemaining = 2; //refilled on landing
 	bool jumpWasDown = false;
 
 	bool isRunning = false;
