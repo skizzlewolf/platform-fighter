@@ -15,9 +15,9 @@ enum class StageID {
 enum class GameState {
 	StartScreen,
 	MainMenu,
-	ModeSelect,
+	VersusMenu,
+	TrainingMenu,
 	CharacterSelect,
-	TrainingSelect,
 	StageSelect,
 	Playing,
 	Results,
@@ -47,6 +47,11 @@ enum class MatchType {
 struct MatchRules {
 	MatchType matchType = MatchType::Casual1v1;
 	VictoryType victoryType = VictoryType::Stocks;
+
+	int stocks = 3;
+	int timeLimitSeconds = 180;
+	bool teamEnabled = false;
+	bool cpuEnabled = false;
 };
 
 

@@ -42,7 +42,7 @@ void makeVerticalButtons(
 }
 
 void initializeMenus(MenuUIState& ui, const sf::Font& font) {
-	makeVerticalButtons(ui.stageButtons, font, 4, { 320.f, 200.f }, { 440.f, 64.f }, 78.f);
+	makeVerticalButtons(ui.stageButtons, font, 3, { 320.f, 200.f }, { 440.f, 64.f }, 82.f);
 	makeVerticalButtons(ui.pauseButtons, font, 5, { 320.f, 190.f }, { 440.f, 64.f }, 80.f);
 	makeVerticalButtons(ui.trainingButtons, font, 7, { 320.f, 130.f }, { 440.f, 64.f }, 68.f);
 }
@@ -66,10 +66,7 @@ void updateStageSelectMenu(
 	ui.stageButtons[1].label.setString(
 		std::string("Stage: Hidden Ember District") + (selectedStage == StageID::HiddenEmber ? "   <" : "")
 	);
-	ui.stageButtons[2].label.setString(
-		std::string("Mode: ") + (selectedMode == GameMode::Training ? "Training" : "Versus")
-	);
-	ui.stageButtons[3].label.setString("Start Match");
+	ui.stageButtons[2].label.setString("Start Match");
 
 	for (auto& b : ui.stageButtons) {
 		centerLabelInButton(b);

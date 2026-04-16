@@ -57,19 +57,29 @@ static void drawSimpleVerticalMenu(
 	}
 }
 
+static sf::FloatRect getSimpleMenuOptionRect(int index) {
+	return sf::FloatRect(
+		sf::Vector2f{ 100.f, 170.f + index * 70.f },
+		sf::Vector2{ 420.f, 55.f }
+	);
+}
+
 
 int main() {
 	sf::RenderWindow window(sf::VideoMode({ 1080, 720 }), "*Pre-Alpha 4-Corners*");
 	window.setFramerateLimit(60);
 
 	GameState gameState = GameState::StartScreen;
+	GameState previousMenuState = GameState::MainMenu;
 	StageID selectedStage = StageID::Dojo;
 	StageID currentStage = StageID::Dojo;
 	GameMode selectedMode = GameMode::Training;
 	GameMode currentMode = GameMode::Training;
 
 	int mainMenuIndex = 0;
-	int modeMenuIndex = 0;
+	int versusMenuIndex = 0;
+	int trainingMenuFrontIndex = 0;
+	int committedStageIndex = 0;
 
 	std::vector<std::string> mainMenuOptions = {
 		"Play",
@@ -78,13 +88,29 @@ int main() {
 		"Exit"
 	};
 
-	std::vector<std::string> modeMenuOptions = {
+	std::vector<std::string> versusMenuOptions = {
 		"1v1 Casual",
 		"2v2 Casual",
 		"Tournament",
 		"Back"
 	};
 
+	std::vector<std::string> trainingMenuOptions = {
+		"Tutorial",
+		"Free Training",
+		"Back"
+	};
+
+	int p1CharacterIndex = 0;
+	int p2CharacterIndex = 1;
+	int characterSelectStep = 0;
+
+	std::vector<std::string> characterOptions = {
+		"Fighter 1",
+		"Fighter 2",
+		"Fighter 3"
+	};
+	
 	sf::Font font;
 	if (!font.openFromFile("COLONNA.ttf")) {
 		return -1;
@@ -223,14 +249,13 @@ int main() {
 	auto activateStageSelectItem = [&]() {
 		if (ui.stageSelectIndex == 0) {
 			selectedStage = StageID::Dojo;
+			committedStageIndex = 0;
 		}
 		else if (ui.stageSelectIndex == 1) {
 			selectedStage = StageID::HiddenEmber;
+			committedStageIndex = 1;
 		}
 		else if (ui.stageSelectIndex == 2) {
-			selectedMode = (selectedMode == GameMode::Training) ? GameMode::Versus : GameMode::Training;
-		}
-		else if (ui.stageSelectIndex == 3) {
 			startMatch();
 		}
 
@@ -296,21 +321,47 @@ int main() {
 
 		refreshMenus();
 	};
+	
+	auto activateVersusMenuItem = [&]() {
+		if (versusMenuIndex == 0) {
+			selectedMode = GameMode::Versus;
+			previousMenuState = GameState::VersusMenu;
+			characterSelectStep = 0;
+			gameState = GameState::CharacterSelect;
+		}
+		else if (versusMenuIndex == 1) {
+			selectedMode = GameMode::Versus;
+			previousMenuState = GameState::VersusMenu;
+			characterSelectStep = 0;
+			gameState = GameState::CharacterSelect;
+		}
+		else if (versusMenuIndex == 2) {
+			selectedMode = GameMode::Versus;
+			previousMenuState = GameState::VersusMenu;
+			characterSelectStep = 0;
+			gameState = GameState::CharacterSelect;
+		}
+		else if (versusMenuIndex == 3) {
+			gameState = GameState::MainMenu;
+		}
 
-	auto activateModeMenuItem = [&]() {
-		if (modeMenuIndex == 0) {
-			selectedMode = GameMode::Versus;
-			gameState = GameState::StageSelect;
+		refreshMenus();
+	};
+
+	auto activateFrontTrainingMenuItem = [&]() {
+		if (versusMenuIndex == 0) {
+			selectedMode = GameMode::Training;
+			previousMenuState = GameState::TrainingMenu;
+			characterSelectStep = 0;
+			gameState = GameState::CharacterSelect;
 		}
-		else if (modeMenuIndex == 1) {
-			selectedMode = GameMode::Versus;
-			gameState = GameState::StageSelect;
+		else if (versusMenuIndex == 1) {
+			selectedMode = GameMode::Training;
+			previousMenuState = GameState::TrainingMenu;
+			characterSelectStep = 0;
+			gameState = GameState::CharacterSelect;
 		}
-		else if (modeMenuIndex == 2) {
-			selectedMode = GameMode::Versus;
-			gameState = GameState::StageSelect;
-		}
-		else if (modeMenuIndex == 3) {
+		else if (versusMenuIndex == 2) {
 			gameState = GameState::MainMenu;
 		}
 
@@ -331,16 +382,12 @@ int main() {
 			// -------------------------------
 			if (const auto* key = event->getIf<sf::Event::KeyPressed>()) {
 
-				//--------------------------------
 				// Start Screen
-				//--------------------------------
 				if (gameState == GameState::StartScreen) {
 					gameState = GameState::MainMenu;
 				}
 
-				//--------------------------------
 				// Main Menu
-				//--------------------------------
 				else if (gameState == GameState::MainMenu) {
 					if (key->code == sf::Keyboard::Key::W || key->code == sf::Keyboard::Key::Up) {
 						mainMenuIndex--;
@@ -352,11 +399,10 @@ int main() {
 					}
 					else if (key->code == sf::Keyboard::Key::Enter) {
 						if (mainMenuIndex == 0) {
-							gameState = GameState::ModeSelect;
+							gameState = GameState::VersusMenu;
 						}
 						else if (mainMenuIndex == 1) {
-							selectedMode = GameMode::Training;
-							gameState = GameState::StageSelect;
+							gameState = GameState::TrainingMenu;
 						}
 						else if (mainMenuIndex == 2) {
 							gameState = GameState::Settings;
@@ -368,62 +414,121 @@ int main() {
 
 				}
 
-				//--------------------------------
-				// Mode Select
-				//--------------------------------
-				else if (gameState == GameState::ModeSelect) {
+				// Versus Mode
+				else if (gameState == GameState::VersusMenu) {
 					if (key->code == sf::Keyboard::Key::W || key->code == sf::Keyboard::Key::Up) {
-						modeMenuIndex--;
-						if (modeMenuIndex < 0) { modeMenuIndex = (int)modeMenuOptions.size() -1; }
+						versusMenuIndex--;
+						if (versusMenuIndex < 0) { versusMenuIndex = (int)versusMenuOptions.size() - 1; }
 					}
 					else if (key->code == sf::Keyboard::Key::S || key->code == sf::Keyboard::Key::Down) {
-						modeMenuIndex++;
-						if (modeMenuIndex >= (int)modeMenuOptions.size()) { modeMenuIndex = 0; }
+						versusMenuIndex++;
+						if (versusMenuIndex >= (int)versusMenuOptions.size()) { versusMenuIndex = 0; }
 					}
 					else if (key->code == sf::Keyboard::Key::Enter) {
-						activateModeMenuItem();
+						activateVersusMenuItem();
 					}
 					else if (key->code == sf::Keyboard::Key::Escape) {
 						gameState = GameState::MainMenu;
 					}
 				}
 
-				// -------------------------------
+				// Training Menu
+				else if (gameState == GameState::TrainingMenu) {
+					if (key->code == sf::Keyboard::Key::W || key->code == sf::Keyboard::Key::Up) {
+						trainingMenuFrontIndex--;
+						if (trainingMenuFrontIndex < 0) { trainingMenuFrontIndex = (int)trainingMenuOptions.size() - 1; }
+					}
+					else if (key->code == sf::Keyboard::Key::S || key->code == sf::Keyboard::Key::Down) {
+						trainingMenuFrontIndex++;
+						if (trainingMenuFrontIndex >= (int)trainingMenuOptions.size()) { trainingMenuFrontIndex = 0; }
+					}
+					else if (key->code == sf::Keyboard::Key::Enter) {
+						activateFrontTrainingMenuItem();
+					}
+					else if (key->code == sf::Keyboard::Key::Escape) {
+						gameState = GameState::MainMenu;
+					}
+				}
+
+				// Character Select
+				else if (gameState == GameState::CharacterSelect) {
+					if (key->code == sf::Keyboard::Key::A || key->code == sf::Keyboard::Key::Left) {
+						if (characterSelectStep == 0) {
+							p1CharacterIndex--;
+							if (p1CharacterIndex < 0) { p1CharacterIndex = (int)characterOptions.size() - 1; }
+						}
+						else {
+							p2CharacterIndex--;
+							if (p2CharacterIndex < 0) { p2CharacterIndex = (int)characterOptions.size() - 1; }
+						}
+					}
+					else if (key->code == sf::Keyboard::Key::D || key->code == sf::Keyboard::Key::Right) {
+						if (characterSelectStep == 0) {
+							p1CharacterIndex++;
+							if (p1CharacterIndex >= (int)characterOptions.size()) { p1CharacterIndex = 0; }
+						}
+						else {
+							p2CharacterIndex++;
+							if (p2CharacterIndex >= (int)characterOptions.size()) { p2CharacterIndex = 0; }
+						}
+					}
+					else if (key->code == sf::Keyboard::Key::Enter) {
+						if (characterSelectStep == 0) {
+							characterSelectStep = 1;
+						}
+						else {
+							ui.stageSelectIndex = committedStageIndex;
+							previousMenuState = GameState::CharacterSelect;
+							gameState = GameState::StageSelect;
+						}
+					}
+					else if (key->code == sf::Keyboard::Key::Escape) {
+						if (characterSelectStep == 1) {
+							characterSelectStep = 0;
+						}
+						else {
+							gameState = (selectedMode == GameMode::Versus) ? GameState::VersusMenu : GameState::TrainingMenu;
+						}
+					}
+				}
+
+				// Escape (settings)
+				else if (gameState == GameState::Settings) {
+					if (key->code == sf::Keyboard::Key::Escape) {
+						gameState = GameState::MainMenu;
+					}
+				}
+
 				// Stage Select
-				// -------------------------------
 				else if (gameState == GameState::StageSelect) {
 					if (key->code == sf::Keyboard::Key::W || key->code == sf::Keyboard::Key::Up) {
 						ui.stageSelectIndex--;
-						if (ui.stageSelectIndex < 0) ui.stageSelectIndex = 3;
+						if (ui.stageSelectIndex < 0) { ui.stageSelectIndex = 2; }
 					}
 					else if (key->code == sf::Keyboard::Key::S || key->code == sf::Keyboard::Key::Down) {
 						ui.stageSelectIndex++;
-						if (ui.stageSelectIndex > 3) ui.stageSelectIndex = 0;
-					}
-					else if (
-						ui.stageSelectIndex == 2 &&
-						(
-							key->code == sf::Keyboard::Key::A ||
-							key->code == sf::Keyboard::Key::Left ||
-							key->code == sf::Keyboard::Key::D ||
-							key->code == sf::Keyboard::Key::Right
-							)
-						) {
-						selectedMode = (selectedMode == GameMode::Training) ? GameMode::Versus : GameMode::Training;
+						if (ui.stageSelectIndex > 2) { ui.stageSelectIndex = 0; }
 					}
 					else if (key->code == sf::Keyboard::Key::Enter) {
+						if (ui.stageSelectIndex == 0) {
+							selectedStage = StageID::Dojo;
+							committedStageIndex = 0;
+						}
+						else if (ui.stageSelectIndex == 1) {
+							selectedStage = StageID::HiddenEmber;
+							committedStageIndex = 1;
+						}
+
 						activateStageSelectItem();
 					}
-
-					if (ui.stageSelectIndex == 0) selectedStage = StageID::Dojo;
-					if (ui.stageSelectIndex == 1) selectedStage = StageID::HiddenEmber;
+					else if (key->code == sf::Keyboard::Key::Escape) {
+						gameState = GameState::CharacterSelect;
+					}
 
 					refreshMenus();
 				}
 
-				// -------------------------------
 				// Playing / Pause
-				// -------------------------------
 				else if (gameState == GameState::Playing) {
 					if (key->code == sf::Keyboard::Key::Escape) {
 						if (!isPaused) {
@@ -486,16 +591,48 @@ int main() {
 					window.getDefaultView()
 				);
 
-				if (gameState == GameState::StageSelect) {
+				// Main Menu hover
+				if (gameState == GameState::MainMenu) {
+					for (int i = 0; i < (int)mainMenuOptions.size(); i++) {
+						if (getSimpleMenuOptionRect(i).contains(mousePos)) {
+							mainMenuIndex = i;
+							break;
+						}
+					}
+				}
+
+				// Versus Menu hover
+				else if (gameState == GameState::VersusMenu) {
+					for (int i = 0; i < (int)versusMenuOptions.size(); i++) {
+						if (getSimpleMenuOptionRect(i).contains(mousePos)) {
+							versusMenuIndex = i;
+							break;
+						}
+					}
+				}
+
+				// Training Menu hover
+				else if (gameState == GameState::TrainingMenu) {
+					for (int i = 0; i < (int)trainingMenuOptions.size(); i++) {
+						if (getSimpleMenuOptionRect(i).contains(mousePos)) {
+							trainingMenuFrontIndex = i;
+							break;
+						}
+					}
+				}
+
+				// Stage Select hover
+				else if (gameState == GameState::StageSelect) {
 					for (int i = 0; i < (int)ui.stageButtons.size(); i++) {
 						if (ui.stageButtons[i].contains(mousePos)) {
 							ui.stageSelectIndex = i;
-							if (i == 0) selectedStage = StageID::Dojo;
-							if (i == 1) selectedStage = StageID::HiddenEmber;
+							break;
 						}
 					}
 					refreshMenus();
 				}
+
+				// Pause / Training settings hover
 				else if (gameState == GameState::Playing && isPaused) {
 					if (ui.pauseMenuPage == PauseMenuPage::Main) {
 						int pauseButtonCount = (currentMode == GameMode::Training) ? 5 : 4;
@@ -527,12 +664,64 @@ int main() {
 						window.getDefaultView()
 					);
 
-					if (gameState == GameState::StageSelect) {
+					if (gameState == GameState::StartScreen) {
+						gameState = GameState::MainMenu;
+					}
+
+					else if (gameState == GameState::MainMenu) {
+						for (int i = 0; i < (int)mainMenuOptions.size(); i++) {
+							if (getSimpleMenuOptionRect(i).contains(mousePos)) {
+								mainMenuIndex = i;
+
+								if (mainMenuIndex == 0) {
+									gameState = GameState::VersusMenu;
+								}
+								else if (mainMenuIndex == 1) {
+									gameState = GameState::TrainingMenu;
+								}
+								else if (mainMenuIndex == 2) {
+									gameState = GameState::Settings;
+								}
+								else if (mainMenuIndex == 3) {
+									window.close();
+								}
+								break;
+							}
+						}
+					}
+
+					else if (gameState == GameState::VersusMenu) {
+						for (int i = 0; i < (int)versusMenuOptions.size(); i++) {
+							if (getSimpleMenuOptionRect(i).contains(mousePos)) {
+								versusMenuIndex = i;
+								activateVersusMenuItem();
+								break;
+							}
+						}
+					}
+
+					else if (gameState == GameState::TrainingMenu) {
+						for (int i = 0; i < (int)trainingMenuOptions.size(); i++) {
+							if (getSimpleMenuOptionRect(i).contains(mousePos)) {
+								trainingMenuFrontIndex = i;
+								activateFrontTrainingMenuItem();
+								break;
+							}
+						}
+					}
+
+					else if (gameState == GameState::StageSelect) {
 						for (int i = 0; i < (int)ui.stageButtons.size(); i++) {
 							if (ui.stageButtons[i].contains(mousePos)) {
 								ui.stageSelectIndex = i;
-								if (i == 0) selectedStage = StageID::Dojo;
-								if (i == 1) selectedStage = StageID::HiddenEmber;
+								if (i == 0) {
+									selectedStage = StageID::Dojo;
+									committedStageIndex = 0;
+								}
+								if (i == 1) {
+									selectedStage = StageID::HiddenEmber;
+									committedStageIndex = 1;
+								}
 								activateStageSelectItem();
 								break;
 							}
@@ -564,36 +753,38 @@ int main() {
 			}
 		}
 
-		// -------------------------------
+		//-------------------------------
+		// Render
+		//-------------------------------
+
 		// Start Screen render
-		// -------------------------------
 		if (gameState == GameState::StartScreen) {
 			drawStartScreen(window, font);
 			window.display();
 			continue;
 		}
 
-		//------------------------------
 		// Main Menu Render
-		//------------------------------
 		if (gameState == GameState::MainMenu) {
 			drawSimpleVerticalMenu(window, font, "MAIN MENU", mainMenuOptions, mainMenuIndex);
 			window.display();
 			continue;
 		}
 		
-		//-------------------------------
-		// Mode Select render
-		//-------------------------------
-		if (gameState == GameState::ModeSelect) {
-			drawSimpleVerticalMenu(window, font, "MODE SELECT", modeMenuOptions, modeMenuIndex);
+		// Versus/Training Select render
+		if (gameState == GameState::VersusMenu) {
+			drawSimpleVerticalMenu(window, font, "VERSUS", versusMenuOptions, versusMenuIndex);
 			window.display();
 			continue;
 		}
 
-		//---------------------------
+		if (gameState == GameState::TrainingMenu) {
+			drawSimpleVerticalMenu(window, font, "TRAINING", trainingMenuOptions, trainingMenuFrontIndex);
+			window.display();
+			continue;
+		}
+
 		// Settings render
-		//---------------------------
 		if (gameState == GameState::Settings) {
 			window.clear(sf::Color(20, 20, 30));
 
@@ -610,6 +801,50 @@ int main() {
 			info.setPosition({ 100.f,180.f });
 			window.draw(titleText);
 			window.draw(info);
+
+			window.display();
+			continue;
+		}
+
+		// Character Select render
+		if (gameState == GameState::CharacterSelect) {
+			window.clear(sf::Color(22, 22, 34));
+
+			sf::Text titleText(font);
+			titleText.setString("CHARACTER SELECT");
+			titleText.setCharacterSize(54);
+			titleText.setFillColor(sf::Color::White);
+			titleText.setPosition({ 80.f,70.f });
+
+			sf::Text modeText(font);
+			modeText.setString(selectedMode == GameMode::Versus ? "Mode: Versus" : "Mode: Training");
+			modeText.setCharacterSize(28);
+			modeText.setFillColor(sf::Color(220, 220, 220));
+			modeText.setPosition({ 100.f,150.f });
+
+			sf::Text p1Text(font);
+			p1Text.setString("P1: " + characterOptions[p1CharacterIndex]);
+			p1Text.setCharacterSize(36);
+			p1Text.setFillColor(characterSelectStep == 0 ? sf::Color::Yellow : sf::Color::White);
+			p1Text.setPosition({ 120.f, 260.f });
+
+			sf::Text p2Text(font);
+			p2Text.setString((selectedMode == GameMode::Versus ? "P2 " : "Dummy: ") + characterOptions[p2CharacterIndex]);
+			p2Text.setCharacterSize(36);
+			p2Text.setFillColor(characterSelectStep == 1 ? sf::Color::Yellow : sf::Color::White);
+			p2Text.setPosition({ 120.f,340.f });
+
+			sf::Text helpText(font);
+			helpText.setString("Left/Right = Change      Enter = Confirm      Escape = Back");
+			helpText.setCharacterSize(24);
+			helpText.setFillColor(sf::Color(200, 200, 200));
+			helpText.setPosition({ 100.f,520.f });
+
+			window.draw(titleText);
+			window.draw(modeText);
+			window.draw(p1Text);
+			window.draw(p2Text);
+			window.draw(helpText);
 
 			window.display();
 			continue;
