@@ -2,8 +2,9 @@
 
 The original idea was a terreria-like game but it quickly turned into a fully playable 2-player platform fighter built from scratch in **C++** and **SFML**. No game engine — all physics, combat, and rendering are custom-built.
 
-> **Pre-alpha** — core gameplay loop is complete and playable. Active development.
-
+> **Pre-alpha** — core gameplay loop is complete and playable. Characters and stages are represented 
+> by colored rectangles — no art assets yet. The focus so far has been entirely on the underlying 
+> game systems (physics, combat, frame data). Visual polish is a future milestone.
 ---
 
 ## Gameplay Features
@@ -97,4 +98,4 @@ This was my first solo game project built without an engine. The biggest technic
 
 ---
 
-*Built with C++ and SFML — no engine, no shortcuts.*
+*Built with C++ and SFML — no engine, no art assets, no shortcuts. All gameplay systems from scratch.*
