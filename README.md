@@ -58,6 +58,10 @@ The original idea was a terreria-like game but it quickly turned into a fully pl
 **Drop through platform:** Hold Down while grounded  
 **Dodge:** Press Block while holding a direction  
 
+<img width="1920" height="1080" alt="Screenshot (39)" src="https://github.com/user-attachments/assets/14e63c3f-10bc-4d41-b957-4a63d10c9cb9" />
+![gameplay screenshot — placeholder art](screenshot.png)
+*Pre-alpha build — rectangle placeholders for characters and platforms*
+
 ---
 
 ## Building & Running
