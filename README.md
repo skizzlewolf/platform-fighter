@@ -1,6 +1,6 @@
 # 4-Corners — 2D Platform Fighter
 
-A fully playable 2-player platform fighter built from scratch in **C++** and **SFML**. No game engine — all physics, combat, and rendering are custom-built.
+The original idea was a terreria-like game but it quickly turned into a fully playable 2-player platform fighter built from scratch in **C++** and **SFML**. No game engine — all physics, combat, and rendering are custom-built.
 
 > **Pre-alpha** — core gameplay loop is complete and playable. Active development.
 
